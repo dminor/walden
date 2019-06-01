@@ -11,6 +11,7 @@ value          -> IDENTIFIER | NUMBER | STRING | "false" | "true" | "nil"
 */
 
 pub enum Ast {
+    Keyword(Box<Ast>, Vec<(lexer::LexedToken, Ast)>),
     Binary(lexer::LexedToken, Box<Ast>, Box<Ast>),
     Unary(Box<Ast>, Box<Ast>),
     Value(lexer::LexedToken),
@@ -19,6 +20,13 @@ pub enum Ast {
 impl fmt::Display for Ast {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Ast::Keyword(obj, msg) => {
+                write!(f, "(keyword {}", obj)?;
+                for kw in msg {
+                    write!(f, " {}: {}", kw.0.token, kw.1)?;
+                }
+                write!(f, ")")
+            }
             Ast::Binary(op, obj, msg) => write!(f, "(binary {} {} {})", op.token, *obj, *msg),
             Ast::Unary(obj, msg) => write!(f, "(unary {} {})", *obj, *msg),
             Ast::Value(t) => match &t.token {
@@ -45,10 +53,71 @@ impl fmt::Display for ParserError {
 
 impl Error for ParserError {}
 
-fn binary(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
-    let lhs = unary(tokens);
+macro_rules! expect {
+    ($tokens:expr, $token:tt, $err:expr) => {{
+        match $tokens.pop_front() {
+            Some(token) => match token.token {
+                lexer::Token::$token => {}
+                _ => {
+                    return Err(ParserError {
+                        err: $err,
+                        line: token.line,
+                    });
+                }
+            },
+            None => {
+                return Err(ParserError {
+                    err: "Unexpected end of input.".to_string(),
+                    line: usize::max_value(),
+                });
+            }
+        }
+    };};
+}
 
-    match lhs {
+fn keyword(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
+    match binary(tokens) {
+        Ok(obj) => match tokens.front() {
+            Some(peek) => match peek.token {
+                lexer::Token::Identifier(_) => {
+                    let mut msg = Vec::new();
+                    loop {
+                        match tokens.front() {
+                            Some(peek) => match peek.token {
+                                lexer::Token::Identifier(_) => {
+                                    if let Some(token) = tokens.pop_front() {
+                                        expect!(tokens, Colon, "Expected :.".to_string());
+                                        match binary(tokens) {
+                                            Ok(value) => {
+                                                msg.push((token, value));
+                                            }
+                                            Err(e) => {
+                                                return Err(e);
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    break;
+                                }
+                            },
+                            _ => {
+                                break;
+                            }
+                        }
+                    }
+                    Ok(Ast::Keyword(Box::new(obj), msg))
+                }
+                _ => Ok(obj),
+            },
+            _ => Ok(obj),
+        },
+        Err(e) => Err(e),
+    }
+}
+
+fn binary(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
+    match unary(tokens) {
         Ok(mut lhs) => {
             loop {
                 match tokens.front() {
@@ -86,34 +155,42 @@ fn binary(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError
             }
             Ok(lhs)
         }
-        Err(e) => {
-            return Err(e);
-        }
+        Err(e) => Err(e),
     }
 }
 
 fn unary(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
-    let v = value(tokens);
-
-    match v {
-        Ok(ast) => {
-            let mut result;
-            result = ast;
+    match value(tokens) {
+        Ok(mut result) => {
             loop {
-                match tokens.front() {
-                    Some(peek) => match peek.token {
-                        lexer::Token::Identifier(_) => match value(tokens) {
-                            Ok(msg) => {
-                                result = Ast::Unary(Box::new(result), Box::new(msg));
-                            }
-                            Err(e) => {
-                                return Err(e);
-                            }
-                        },
-                        _ => {
-                            break;
+                let mut iter = tokens.iter();
+                // We need two tokens of lookahead to disambigulate a unary
+                // message from a keyword message.
+                match iter.next() {
+                    Some(peek) => {
+                        match iter.next() {
+                            Some(peek) => match peek.token {
+                                lexer::Token::Colon => {
+                                    break;
+                                }
+                                _ => {}
+                            },
+                            None => {}
                         }
-                    },
+                        match peek.token {
+                            lexer::Token::Identifier(_) => match value(tokens) {
+                                Ok(msg) => {
+                                    result = Ast::Unary(Box::new(result), Box::new(msg));
+                                }
+                                Err(e) => {
+                                    return Err(e);
+                                }
+                            },
+                            _ => {
+                                break;
+                            }
+                        }
+                    }
                     _ => {
                         break;
                     }
@@ -176,7 +253,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
 }
 
 pub fn parse(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
-    binary(tokens)
+    keyword(tokens)
 }
 
 #[cfg(test)]
@@ -253,5 +330,23 @@ mod tests {
             "2 * 3 * 4",
             "(binary * (binary * 2:Number 3:Number) 4:Number)"
         );
+        parse!(
+            "'hello ' concat: 'world'",
+            "(keyword hello :String concat: world:String)"
+        );
+        parse!(
+            "a b:1 c: 2",
+            "(keyword a:Identifier b: 1:Number c: 2:Number)"
+        );
+        parse!(
+            "a mod: 81 sqrt",
+            "(keyword a:Identifier mod: (unary 81:Number sqrt:Identifier))"
+        );
+        // From Wikipedia example of Smalltalk message precedence
+        parse!(
+            "3 factorial + 4 factorial between: 10 and: 100",
+            "(keyword (binary + (unary 3:Number factorial:Identifier) (unary 4:Number factorial:Identifier)) between: 10:Number and: 100:Number)"
+        );
+        parse!("a b:-2", "(keyword a:Identifier b: -2:Number)");
     }
 }
