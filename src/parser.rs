@@ -11,6 +11,7 @@ value          -> IDENTIFIER | NUMBER | STRING | "false" | "true" | "nil"
 */
 
 pub enum Ast {
+    Binary(lexer::LexedToken, Box<Ast>, Box<Ast>),
     Unary(Box<Ast>, Box<Ast>),
     Value(lexer::LexedToken),
 }
@@ -18,6 +19,7 @@ pub enum Ast {
 impl fmt::Display for Ast {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Ast::Binary(op, obj, msg) => write!(f, "(binary {} {} {})", op.token, *obj, *msg),
             Ast::Unary(obj, msg) => write!(f, "(unary {} {})", *obj, *msg),
             Ast::Value(t) => match &t.token {
                 lexer::Token::Identifier(_) => write!(f, "{}:Identifier", t.token),
@@ -42,6 +44,53 @@ impl fmt::Display for ParserError {
 }
 
 impl Error for ParserError {}
+
+fn binary(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
+    let lhs = unary(tokens);
+
+    match lhs {
+        Ok(mut lhs) => {
+            loop {
+                match tokens.front() {
+                    Some(peek) => match peek.token {
+                        lexer::Token::Plus
+                        | lexer::Token::Minus
+                        | lexer::Token::Star
+                        | lexer::Token::Slash
+                        | lexer::Token::Less
+                        | lexer::Token::LessEqual
+                        | lexer::Token::NotEqual
+                        | lexer::Token::Equal
+                        | lexer::Token::Greater
+                        | lexer::Token::GreaterEqual => {
+                            if let Some(token) = tokens.pop_front() {
+                                let rhs = unary(tokens);
+                                match rhs {
+                                    Ok(rhs) => {
+                                        lhs = Ast::Binary(token, Box::new(lhs), Box::new(rhs));
+                                    }
+                                    Err(e) => {
+                                        return Err(e);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            break;
+                        }
+                    },
+                    _ => {
+                        break;
+                    }
+                }
+            }
+            Ok(lhs)
+        }
+        Err(e) => {
+            return Err(e);
+        }
+    }
+}
 
 fn unary(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
     let v = value(tokens);
@@ -127,7 +176,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
 }
 
 pub fn parse(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
-    unary(tokens)
+    binary(tokens)
 }
 
 #[cfg(test)]
@@ -141,6 +190,7 @@ mod tests {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
                     Ok(ast) => {
                         assert_eq!(ast.to_string(), $value);
+                        assert_eq!(tokens.len(), 0);
                     }
                     _ => assert!(false),
                 },
@@ -180,6 +230,28 @@ mod tests {
         parse!(
             "'hello world' len",
             "(unary hello world:String len:Identifier)"
+        );
+        parse!("2 + 3", "(binary + 2:Number 3:Number)");
+        parse!("2 - -3", "(binary - 2:Number -3:Number)");
+        parse!("2 * 3", "(binary * 2:Number 3:Number)");
+        parse!("2 / 3", "(binary / 2:Number 3:Number)");
+        parse!("2 < 3", "(binary < 2:Number 3:Number)");
+        parse!("2 <= 3", "(binary <= 2:Number 3:Number)");
+        parse!("2 = 3", "(binary = 2:Number 3:Number)");
+        parse!("2 ~= 3", "(binary ~= 2:Number 3:Number)");
+        parse!("2 > 3", "(binary > 2:Number 3:Number)");
+        parse!("2 >= 3", "(binary >= 2:Number 3:Number)");
+        parse!(
+            "4 sqrt * 3",
+            "(binary * (unary 4:Number sqrt:Identifier) 3:Number)"
+        );
+        parse!(
+            "2 + 4 sqrt * 3",
+            "(binary * (binary + 2:Number (unary 4:Number sqrt:Identifier)) 3:Number)"
+        );
+        parse!(
+            "2 * 3 * 4",
+            "(binary * (binary * 2:Number 3:Number) 4:Number)"
         );
     }
 }
