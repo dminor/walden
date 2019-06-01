@@ -4,10 +4,12 @@ use std::error::Error;
 use std::fmt;
 
 /*
+expression     -> keyword
 keyword        -> binary | binary (IDENTIFIER ":" binary)+
 binary         -> unary | unary ("+"|"-"|"*"|"/"|">"|">="|"<"|"<="|"~="|"=" unary)*
 unary          -> value | unary IDENTIFIER
 value          -> IDENTIFIER | NUMBER | STRING | "false" | "true" | "nil"
+                  | "(" expression ")"
 */
 
 pub enum Ast {
@@ -73,6 +75,10 @@ macro_rules! expect {
             }
         }
     };};
+}
+
+fn expression(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
+    keyword(tokens)
 }
 
 fn keyword(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
@@ -233,6 +239,13 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                     line: token.line,
                 }),
             },
+            lexer::Token::LeftParen => match expression(tokens) {
+                Ok(result) => {
+                    expect!(tokens, RightParen, "Expected ).".to_string());
+                    Ok(result)
+                }
+                Err(e) => Err(e),
+            },
             _ => {
                 let mut err = "Expected value, found ".to_string();
                 err.push_str(&token.token.to_string());
@@ -253,7 +266,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
 }
 
 pub fn parse(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
-    keyword(tokens)
+    expression(tokens)
 }
 
 #[cfg(test)]
@@ -347,6 +360,14 @@ mod tests {
             "3 factorial + 4 factorial between: 10 and: 100",
             "(keyword (binary + (unary 3:Number factorial:Identifier) (unary 4:Number factorial:Identifier)) between: 10:Number and: 100:Number)"
         );
+        parse!(
+            "(3 factorial + 4) factorial between: 10 and: 100",
+            "(keyword (unary (binary + (unary 3:Number factorial:Identifier) 4:Number) factorial:Identifier) between: 10:Number and: 100:Number)"
+        );
         parse!("a b:-2", "(keyword a:Identifier b: -2:Number)");
+        parse!(
+            "3 + (4 * 5)",
+            "(binary + 3:Number (binary * 4:Number 5:Number))"
+        );
     }
 }
