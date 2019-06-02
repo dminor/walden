@@ -62,18 +62,22 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
                 }
             }
         }
-        parser::Ast::Value(v) => match v.token {
-            lexer::Token::True => {
-                vm.instructions
-                    .push(vm::Opcode::Const(vm::Value::Boolean(true)));
-            }
-            lexer::Token::Number(n) => {
-                vm.instructions
-                    .push(vm::Opcode::Const(vm::Value::Number(n)));
-            }
+        parser::Ast::Value(v) => match &v.token {
             lexer::Token::False => {
                 vm.instructions
                     .push(vm::Opcode::Const(vm::Value::Boolean(false)));
+            }
+            lexer::Token::Number(n) => {
+                vm.instructions
+                    .push(vm::Opcode::Const(vm::Value::Number(*n)));
+            }
+            lexer::Token::String(s) => {
+                vm.instructions
+                    .push(vm::Opcode::Const(vm::Value::String(s.to_string())));
+            }
+            lexer::Token::True => {
+                vm.instructions
+                    .push(vm::Opcode::Const(vm::Value::Boolean(true)));
             }
             _ => {
                 return Err(RuntimeError {
@@ -152,5 +156,6 @@ mod tests {
         eval!("1 <= 3", Boolean, true);
         eval!("1 < 3 = true", Boolean, true);
         eval!("1 < 3 ~= false", Boolean, true);
+        eval!("'hello world'", String, "hello world");
     }
 }

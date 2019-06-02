@@ -19,6 +19,7 @@ impl Error for VMError {}
 pub enum Value {
     Boolean(bool),
     Number(f64),
+    String(String),
 }
 
 impl fmt::Display for Value {
@@ -26,6 +27,7 @@ impl fmt::Display for Value {
         match self {
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Number(n) => write!(f, "{}", n),
+            Value::String(s) => write!(f, "{}", s),
         }
     }
 }
@@ -134,15 +136,20 @@ impl VirtualMachine {
                         } else if split[1] == "false" {
                             self.instructions.push(Opcode::Const(Value::Boolean(false)));
                         } else {
-                            match split[1].parse::<f64>() {
-                                Ok(n) => {
-                                    self.instructions.push(Opcode::Const(Value::Number(n)));
-                                }
-                                _ => {
-                                    return Err(VMError {
-                                        err: "Invalid constant.".to_string(),
-                                        line: lineno,
-                                    });
+                            if let Some('\'') = split[1].chars().next() {
+                                self.instructions
+                                    .push(Opcode::Const(Value::String(split[1][1..].to_string())));
+                            } else {
+                                match split[1].parse::<f64>() {
+                                    Ok(n) => {
+                                        self.instructions.push(Opcode::Const(Value::Number(n)));
+                                    }
+                                    _ => {
+                                        return Err(VMError {
+                                            err: "Invalid constant.".to_string(),
+                                            line: lineno,
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -208,6 +215,9 @@ impl VirtualMachine {
                     Value::Number(n) => {
                         self.stack.push(Value::Number(*n));
                     }
+                    Value::String(s) => {
+                        self.stack.push(Value::String(s.to_string()));
+                    }
                 },
                 Opcode::Div => apply_op!(self, Number, Number, /, Div),
                 Opcode::Mul => apply_op!(self, Number, Number, *, Mul),
@@ -215,8 +225,9 @@ impl VirtualMachine {
                 Opcode::Less => apply_op!(self, Number, Boolean, <, Less),
                 Opcode::LessEqual => apply_op!(self, Number, Boolean, <=, LessEqual),
                 Opcode::Equal => match self.stack.last() {
-                    Some(Value::Number(_)) => apply_op!(self, Number, Boolean, ==, Equal),
                     Some(Value::Boolean(_)) => apply_op!(self, Boolean, Boolean, ==, Equal),
+                    Some(Value::Number(_)) => apply_op!(self, Number, Boolean, ==, Equal),
+                    Some(Value::String(_)) => apply_op!(self, String, Boolean, ==, Equal),
                     None => {
                         return Err(VMError {
                             err: "Stack underflow.".to_string(),
@@ -225,8 +236,9 @@ impl VirtualMachine {
                     }
                 },
                 Opcode::NotEqual => match self.stack.last() {
-                    Some(Value::Number(_)) => apply_op!(self, Number, Boolean, !=, NotEqual),
                     Some(Value::Boolean(_)) => apply_op!(self, Boolean, Boolean, !=, NotEqual),
+                    Some(Value::Number(_)) => apply_op!(self, Number, Boolean, !=, NotEqual),
+                    Some(Value::String(_)) => apply_op!(self, String, Boolean, !=, NotEqual),
                     None => {
                         return Err(VMError {
                             err: "Stack underflow.".to_string(),
@@ -502,6 +514,42 @@ mod tests {
         ",
             1,
             5,
+            Boolean,
+            false
+        );
+
+        run!(
+            "
+            const 'hello
+            const 'hello
+            eq
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
+
+        run!(
+            "
+            const '
+            const '
+            eq
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
+
+        run!(
+            "
+            const 'hello
+            const 'world
+            eq
+        ",
+            1,
+            3,
             Boolean,
             false
         );
