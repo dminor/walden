@@ -2,18 +2,18 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct RuntimeError {
+pub struct VMError {
     pub err: String,
     pub line: usize,
 }
 
-impl fmt::Display for RuntimeError {
+impl fmt::Display for VMError {
     fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "RuntimeError: {}", self.err)
+        write!(f, "VMError: {}", self.err)
     }
 }
 
-impl Error for RuntimeError {}
+impl Error for VMError {}
 
 #[derive(Debug)]
 pub enum Value {
@@ -80,13 +80,13 @@ macro_rules! apply_op {
                     let mut err = "Unsupported types for ".to_string();
                     err.push_str(&Opcode::$opcode.to_string());
                     err.push('.');
-                    return Err(RuntimeError {
+                    return Err(VMError {
                         err: err,
                         line: usize::max_value(),
                     });
                 }
                 None => {
-                    return Err(RuntimeError {
+                    return Err(VMError {
                         err: "Stack underflow.".to_string(),
                         line: usize::max_value(),
                     });
@@ -96,13 +96,13 @@ macro_rules! apply_op {
                 let mut err = "Unsupported types for ".to_string();
                 err.push_str(&Opcode::$opcode.to_string());
                 err.push('.');
-                return Err(RuntimeError {
+                return Err(VMError {
                     err: err,
                     line: usize::max_value(),
                 });
             }
             None => {
-                return Err(RuntimeError {
+                return Err(VMError {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 });
@@ -112,7 +112,91 @@ macro_rules! apply_op {
 }
 
 impl VirtualMachine {
-    pub fn run(&mut self) -> Result<(), RuntimeError> {
+    pub fn assemble(&mut self, code: &str) -> Result<(), VMError> {
+        let mut lineno = 1;
+        for line in code.split('\n') {
+            let split: Vec<&str> = line.trim().split_whitespace().collect();
+            if split.is_empty() {
+                lineno += 1;
+                continue;
+            }
+
+            if let Some(';') = split[0].chars().next() {
+                lineno += 1;
+                continue;
+            }
+
+            match split[0] {
+                "const" => {
+                    if split.len() == 2 {
+                        if split[1] == "true" {
+                            self.instructions.push(Opcode::Const(Value::Boolean(true)));
+                        } else if split[1] == "false" {
+                            self.instructions.push(Opcode::Const(Value::Boolean(false)));
+                        } else {
+                            match split[1].parse::<f64>() {
+                                Ok(n) => {
+                                    self.instructions.push(Opcode::Const(Value::Number(n)));
+                                }
+                                _ => {
+                                    return Err(VMError {
+                                        err: "Invalid constant.".to_string(),
+                                        line: lineno,
+                                    });
+                                }
+                            }
+                        }
+                    } else {
+                        return Err(VMError {
+                            err: "Missing constant argument.".to_string(),
+                            line: lineno,
+                        });
+                    }
+                }
+                "add" => {
+                    self.instructions.push(Opcode::Add);
+                }
+                "div" => {
+                    self.instructions.push(Opcode::Div);
+                }
+                "mul" => {
+                    self.instructions.push(Opcode::Mul);
+                }
+                "sub" => {
+                    self.instructions.push(Opcode::Sub);
+                }
+                "lt" => {
+                    self.instructions.push(Opcode::Less);
+                }
+                "le" => {
+                    self.instructions.push(Opcode::LessEqual);
+                }
+                "eq" => {
+                    self.instructions.push(Opcode::Equal);
+                }
+                "ne" => {
+                    self.instructions.push(Opcode::NotEqual);
+                }
+                "gt" => {
+                    self.instructions.push(Opcode::Greater);
+                }
+                "ge" => {
+                    self.instructions.push(Opcode::GreaterEqual);
+                }
+                _ => {
+                    return Err(VMError {
+                        err: "Invalid instruction.".to_string(),
+                        line: lineno,
+                    });
+                }
+            }
+            lineno += 1;
+        }
+
+        Ok(())
+    }
+
+    pub fn run(&mut self) -> Result<(), VMError> {
         self.ip = 0;
         while self.ip < self.instructions.len() {
             match &self.instructions[self.ip] {
@@ -134,7 +218,7 @@ impl VirtualMachine {
                     Some(Value::Number(_)) => apply_op!(self, Number, Boolean, ==, Equal),
                     Some(Value::Boolean(_)) => apply_op!(self, Boolean, Boolean, ==, Equal),
                     None => {
-                        return Err(RuntimeError {
+                        return Err(VMError {
                             err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
@@ -144,7 +228,7 @@ impl VirtualMachine {
                     Some(Value::Number(_)) => apply_op!(self, Number, Boolean, !=, NotEqual),
                     Some(Value::Boolean(_)) => apply_op!(self, Boolean, Boolean, !=, NotEqual),
                     None => {
-                        return Err(RuntimeError {
+                        return Err(VMError {
                             err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
@@ -171,6 +255,53 @@ impl VirtualMachine {
 mod tests {
     use crate::vm;
 
+    macro_rules! run {
+        ($input:expr, $stack:expr, $ip:expr, $type:ident, $value:expr) => {{
+            let mut vm = vm::VirtualMachine::new();
+            match vm.assemble($input) {
+                Ok(()) => match vm.run() {
+                    Ok(()) => {
+                        assert_eq!(vm.stack.len(), $stack);
+                        assert_eq!(vm.ip, $ip);
+                        match vm.stack.pop() {
+                            Some(vm::Value::$type(v)) => {
+                                assert_eq!(v, $value);
+                            }
+                            _ => {
+                                assert!(false);
+                            }
+                        }
+                    }
+                    _ => {
+                        assert!(false);
+                    }
+                },
+                _ => {
+                    assert!(false);
+                }
+            }
+        }};
+    }
+
+    macro_rules! runfails {
+        ($input:expr, $err:tt) => {{
+            let mut vm = vm::VirtualMachine::new();
+            match vm.assemble($input) {
+                Ok(()) => match vm.run() {
+                    Ok(()) => {
+                        assert!(false);
+                    }
+                    Err(e) => {
+                        assert_eq!(e.err, $err);
+                    }
+                },
+                Err(_) => {
+                    assert!(false);
+                }
+            }
+        }};
+    }
+
     #[test]
     fn run() {
         let mut vm = vm::VirtualMachine::new();
@@ -184,333 +315,195 @@ mod tests {
             }
         }
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::Add);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
+        run!(
+            "
+            const 1.0
+            const 2.0
+            add
+        ",
+            1,
+            3,
+            Number,
+            3.0
+        );
 
-                match vm.stack.pop() {
-                    Some(vm::Value::Number(n)) => {
-                        assert_eq!(n, 3.0);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
+        run!(
+            "
+            const 1.0
+            const 2.0
+            div
+        ",
+            1,
+            3,
+            Number,
+            0.5
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::Div);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
+        run!(
+            "
+            const 1.0
+            const 2.0
+            mul
+        ",
+            1,
+            3,
+            Number,
+            2.0
+        );
 
-                match vm.stack.pop() {
-                    Some(vm::Value::Number(n)) => {
-                        assert_eq!(n, 0.5);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
+        run!(
+            "
+            const 1.0
+            const 2.0
+            sub
+        ",
+            1,
+            3,
+            Number,
+            -1.0
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::Mul);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
+        runfails!(
+            "
+            add
+        ",
+            "Stack underflow."
+        );
 
-                match vm.stack.pop() {
-                    Some(vm::Value::Number(n)) => {
-                        assert_eq!(n, 2.0);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
+        runfails!(
+            "
+            const 1.0
+            add
+        ",
+            "Stack underflow."
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::Sub);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
+        runfails!(
+            "
+            const false
+            const true
+            add
+        ",
+            "Unsupported types for add."
+        );
 
-                match vm.stack.pop() {
-                    Some(vm::Value::Number(n)) => {
-                        assert_eq!(n, -1.0);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
+        runfails!(
+            "
+            const true
+            const 1.0
+            add
+        ",
+            "Unsupported types for add."
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Add);
-        match vm.run() {
-            Ok(()) => {
-                assert!(false);
-            }
-            Err(e) => {
-                assert_eq!(e.err, "Stack underflow.");
-            }
-        }
+        run!(
+            "
+            const 1.0
+            const 2.0
+            lt
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(3.0)));
-        vm.instructions.push(vm::Opcode::Add);
-        match vm.run() {
-            Ok(()) => {
-                assert!(false);
-            }
-            Err(e) => {
-                assert_eq!(e.err, "Stack underflow.");
-            }
-        }
+        run!(
+            "
+            const 1.0
+            const 2.0
+            le
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Boolean(false)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Boolean(true)));
-        vm.instructions.push(vm::Opcode::Add);
-        match vm.run() {
-            Ok(()) => {
-                assert!(false);
-            }
-            Err(e) => {
-                assert_eq!(e.err, "Unsupported types for add.");
-            }
-        }
+        run!(
+            "
+            const 1.0
+            const 1.0
+            eq
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(3.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Boolean(true)));
-        vm.instructions.push(vm::Opcode::Add);
-        match vm.run() {
-            Ok(()) => {
-                assert!(false);
-            }
-            Err(e) => {
-                assert_eq!(e.err, "Unsupported types for add.");
-            }
-        }
+        run!(
+            "
+            const 1.0
+            const 1.0
+            ne
+        ",
+            1,
+            3,
+            Boolean,
+            false
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::Less);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
+        run!(
+            "
+            const 1.0
+            const 1.0
+            gt
+        ",
+            1,
+            3,
+            Boolean,
+            false
+        );
 
-                match vm.stack.pop() {
-                    Some(vm::Value::Boolean(b)) => {
-                        assert_eq!(b, true);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
+        run!(
+            "
+            const 1.0
+            const 1.0
+            ge
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::LessEqual);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
+        run!(
+            "
+            const 1.0
+            const 1.0
+            ge
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
 
-                match vm.stack.pop() {
-                    Some(vm::Value::Boolean(b)) => {
-                        assert_eq!(b, true);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
+        run!(
+            "
+            const true
+            const false
+            eq
+        ",
+            1,
+            3,
+            Boolean,
+            false
+        );
 
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::Equal);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
-
-                match vm.stack.pop() {
-                    Some(vm::Value::Boolean(b)) => {
-                        assert_eq!(b, true);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
-
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::NotEqual);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
-
-                match vm.stack.pop() {
-                    Some(vm::Value::Boolean(b)) => {
-                        assert_eq!(b, false);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
-
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::Greater);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
-
-                match vm.stack.pop() {
-                    Some(vm::Value::Boolean(b)) => {
-                        assert_eq!(b, false);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
-
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
-        vm.instructions.push(vm::Opcode::GreaterEqual);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
-
-                match vm.stack.pop() {
-                    Some(vm::Value::Boolean(b)) => {
-                        assert_eq!(b, true);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
-
-        let mut vm = vm::VirtualMachine::new();
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Boolean(true)));
-        vm.instructions
-            .push(vm::Opcode::Const(vm::Value::Boolean(false)));
-        vm.instructions.push(vm::Opcode::Equal);
-        match vm.run() {
-            Ok(()) => {
-                assert_eq!(vm.stack.len(), 1);
-                assert_eq!(vm.ip, 3);
-
-                match vm.stack.pop() {
-                    Some(vm::Value::Boolean(b)) => {
-                        assert_eq!(b, false);
-                    }
-                    _ => {
-                        assert!(false);
-                    }
-                }
-            }
-            _ => {
-                assert!(false);
-            }
-        }
+        run!(
+            "
+            const -1.0
+            const 2.0
+            lt
+            const false
+            eq
+        ",
+            1,
+            5,
+            Boolean,
+            false
+        );
     }
 }
