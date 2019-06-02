@@ -3,8 +3,10 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 
+mod interpreter;
 mod lexer;
 mod parser;
+mod vm;
 
 use std::io::{self, BufRead, Write};
 
@@ -12,9 +14,20 @@ fn eval(filename: String, s: String) {
     let lines: Vec<&str> = s.split('\n').collect();
     match lexer::scan(&s) {
         Ok(mut tokens) => match parser::parse(&mut tokens) {
-            Ok(ast) => {
-                println!("{}", ast);
-            }
+            Ok(ast) => match interpreter::eval(&ast) {
+                Ok(v) => {
+                    println!("{}", v);
+                }
+                Err(err) => {
+                    let line = min(lines.len(), err.line);
+                    let width = line.to_string().len() + 2;
+                    println!("{}", err);
+                    println!("{s:>width$}|", s = " ", width = width);
+                    println!(" {} | {}", line, lines[line - 1]);
+                    println!("{s:>width$}|", s = " ", width = width);
+                    println!("--> {}:{}", filename, line);
+                }
+            },
             Err(err) => {
                 let line = min(lines.len(), err.line);
                 let width = line.to_string().len() + 2;
