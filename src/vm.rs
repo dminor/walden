@@ -15,11 +15,26 @@ impl fmt::Display for RuntimeError {
 
 impl Error for RuntimeError {}
 
+#[derive(Debug)]
+pub enum Value {
+    Boolean(bool),
+    Number(f64),
+}
+
+impl fmt::Display for Value {
+    fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Boolean(b) => write!(f, "{}", b),
+            Value::Number(n) => write!(f, "{}", n),
+        }
+    }
+}
+
 pub enum Opcode {
     Add,
     Div,
+    Const(Value),
     Mul,
-    ConstF(usize),
     Sub,
 }
 
@@ -29,7 +44,7 @@ impl fmt::Display for Opcode {
             Opcode::Add => write!(f, "add"),
             Opcode::Div => write!(f, "div"),
             Opcode::Mul => write!(f, "mul"),
-            Opcode::ConstF(idx) => write!(f, "const {}", idx),
+            Opcode::Const(obj) => write!(f, "const {}", obj),
             Opcode::Sub => write!(f, "sub"),
         }
     }
@@ -37,10 +52,51 @@ impl fmt::Display for Opcode {
 
 #[derive(Default)]
 pub struct VirtualMachine {
-    pub fconsts: Vec<f64>,
-    pub stack: Vec<f64>,
+    pub stack: Vec<Value>,
     pub instructions: Vec<Opcode>,
     pub ip: usize,
+}
+
+macro_rules! apply_op {
+    ($self:tt, $in:tt, $out:tt, $rustop:tt, $opcode:tt) => (
+        match $self.stack.pop() {
+            Some(Value::$in(a)) => match $self.stack.pop() {
+                Some(Value::$in(b)) => {
+                    $self.stack.push(Value::$out(b $rustop a));
+                }
+                Some(_) => {
+                    let mut err = "Unsupported types for ".to_string();
+                    err.push_str(&Opcode::$opcode.to_string());
+                    err.push('.');
+                    return Err(RuntimeError {
+                        err: err,
+                        line: usize::max_value(),
+                    });
+                }
+                None => {
+                    return Err(RuntimeError {
+                        err: "Stack underflow.".to_string(),
+                        line: usize::max_value(),
+                    });
+                }
+            },
+            Some(_) => {
+                let mut err = "Unsupported types for ".to_string();
+                err.push_str(&Opcode::$opcode.to_string());
+                err.push('.');
+                return Err(RuntimeError {
+                    err: err,
+                    line: usize::max_value(),
+                });
+            }
+            None => {
+                return Err(RuntimeError {
+                    err: "Stack underflow.".to_string(),
+                    line: usize::max_value(),
+                });
+            }
+        }
+    );
 }
 
 impl VirtualMachine {
@@ -48,97 +104,18 @@ impl VirtualMachine {
         self.ip = 0;
         while self.ip < self.instructions.len() {
             match &self.instructions[self.ip] {
-                Opcode::Add => match self.stack.pop() {
-                    Some(a) => match self.stack.pop() {
-                        Some(b) => {
-                            self.stack.push(a + b);
-                        }
-                        None => {
-                            return Err(RuntimeError {
-                                err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
-                            });
-                        }
-                    },
-                    None => {
-                        return Err(RuntimeError {
-                            err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
-                        });
+                Opcode::Add => apply_op!(self, Number, Number, +, Add),
+                Opcode::Const(obj) => match obj {
+                    Value::Boolean(b) => {
+                        self.stack.push(Value::Boolean(*b));
+                    }
+                    Value::Number(n) => {
+                        self.stack.push(Value::Number(*n));
                     }
                 },
-
-                Opcode::Div => match self.stack.pop() {
-                    Some(a) => match self.stack.pop() {
-                        Some(b) => {
-                            self.stack.push(b / a);
-                        }
-                        None => {
-                            return Err(RuntimeError {
-                                err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
-                            });
-                        }
-                    },
-                    None => {
-                        return Err(RuntimeError {
-                            err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
-                        });
-                    }
-                },
-
-                Opcode::ConstF(idx) => match self.fconsts.get(*idx) {
-                    Some(n) => {
-                        self.stack.push(*n);
-                    }
-                    None => {
-                        return Err(RuntimeError {
-                            err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
-                        });
-                    }
-                },
-
-                Opcode::Mul => match self.stack.pop() {
-                    Some(a) => match self.stack.pop() {
-                        Some(b) => {
-                            self.stack.push(a * b);
-                        }
-                        None => {
-                            return Err(RuntimeError {
-                                err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
-                            });
-                        }
-                    },
-                    None => {
-                        return Err(RuntimeError {
-                            err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
-                        });
-                    }
-                },
-
-                Opcode::Sub => match self.stack.pop() {
-                    Some(a) => match self.stack.pop() {
-                        Some(b) => {
-                            self.stack.push(b - a);
-                        }
-                        None => {
-                            return Err(RuntimeError {
-                                err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
-                            });
-                        }
-                    },
-                    None => {
-                        return Err(RuntimeError {
-                            err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
-                        });
-                    }
-                },
+                Opcode::Div => apply_op!(self, Number, Number, /, Div),
+                Opcode::Mul => apply_op!(self, Number, Number, *, Mul),
+                Opcode::Sub => apply_op!(self, Number, Number, -, Sub),
             }
             self.ip += 1;
         }
@@ -147,7 +124,6 @@ impl VirtualMachine {
 
     pub fn new() -> VirtualMachine {
         VirtualMachine {
-            fconsts: Vec::new(),
             stack: Vec::new(),
             instructions: Vec::new(),
             ip: 0,
@@ -164,7 +140,6 @@ mod tests {
         let mut vm = vm::VirtualMachine::new();
         match vm.run() {
             Ok(()) => {
-                assert_eq!(vm.fconsts.len(), 0);
                 assert_eq!(vm.stack.len(), 0);
                 assert_eq!(vm.ip, 0);
             }
@@ -174,10 +149,10 @@ mod tests {
         }
 
         let mut vm = vm::VirtualMachine::new();
-        vm.fconsts.push(1.0);
-        vm.fconsts.push(2.0);
-        vm.instructions.push(vm::Opcode::ConstF(0));
-        vm.instructions.push(vm::Opcode::ConstF(1));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
         vm.instructions.push(vm::Opcode::Add);
         match vm.run() {
             Ok(()) => {
@@ -185,7 +160,7 @@ mod tests {
                 assert_eq!(vm.ip, 3);
 
                 match vm.stack.pop() {
-                    Some(n) => {
+                    Some(vm::Value::Number(n)) => {
                         assert_eq!(n, 3.0);
                     }
                     _ => {
@@ -199,10 +174,10 @@ mod tests {
         }
 
         let mut vm = vm::VirtualMachine::new();
-        vm.fconsts.push(1.0);
-        vm.fconsts.push(2.0);
-        vm.instructions.push(vm::Opcode::ConstF(0));
-        vm.instructions.push(vm::Opcode::ConstF(1));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
         vm.instructions.push(vm::Opcode::Div);
         match vm.run() {
             Ok(()) => {
@@ -210,7 +185,7 @@ mod tests {
                 assert_eq!(vm.ip, 3);
 
                 match vm.stack.pop() {
-                    Some(n) => {
+                    Some(vm::Value::Number(n)) => {
                         assert_eq!(n, 0.5);
                     }
                     _ => {
@@ -224,10 +199,10 @@ mod tests {
         }
 
         let mut vm = vm::VirtualMachine::new();
-        vm.fconsts.push(3.0);
-        vm.fconsts.push(6.0);
-        vm.instructions.push(vm::Opcode::ConstF(0));
-        vm.instructions.push(vm::Opcode::ConstF(1));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
         vm.instructions.push(vm::Opcode::Mul);
         match vm.run() {
             Ok(()) => {
@@ -235,8 +210,8 @@ mod tests {
                 assert_eq!(vm.ip, 3);
 
                 match vm.stack.pop() {
-                    Some(n) => {
-                        assert_eq!(n, 18.0);
+                    Some(vm::Value::Number(n)) => {
+                        assert_eq!(n, 2.0);
                     }
                     _ => {
                         assert!(false);
@@ -249,10 +224,10 @@ mod tests {
         }
 
         let mut vm = vm::VirtualMachine::new();
-        vm.fconsts.push(3.0);
-        vm.fconsts.push(6.0);
-        vm.instructions.push(vm::Opcode::ConstF(0));
-        vm.instructions.push(vm::Opcode::ConstF(1));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
         vm.instructions.push(vm::Opcode::Sub);
         match vm.run() {
             Ok(()) => {
@@ -260,8 +235,8 @@ mod tests {
                 assert_eq!(vm.ip, 3);
 
                 match vm.stack.pop() {
-                    Some(n) => {
-                        assert_eq!(n, -3.0);
+                    Some(vm::Value::Number(n)) => {
+                        assert_eq!(n, -1.0);
                     }
                     _ => {
                         assert!(false);
@@ -285,8 +260,8 @@ mod tests {
         }
 
         let mut vm = vm::VirtualMachine::new();
-        vm.fconsts.push(3.0);
-        vm.instructions.push(vm::Opcode::ConstF(0));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(3.0)));
         vm.instructions.push(vm::Opcode::Add);
         match vm.run() {
             Ok(()) => {
@@ -294,6 +269,36 @@ mod tests {
             }
             Err(e) => {
                 assert_eq!(e.err, "Stack underflow.");
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Boolean(false)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Boolean(true)));
+        vm.instructions.push(vm::Opcode::Add);
+        match vm.run() {
+            Ok(()) => {
+                assert!(false);
+            }
+            Err(e) => {
+                assert_eq!(e.err, "Unsupported types for add.");
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(3.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Boolean(true)));
+        vm.instructions.push(vm::Opcode::Add);
+        match vm.run() {
+            Ok(()) => {
+                assert!(false);
+            }
+            Err(e) => {
+                assert_eq!(e.err, "Unsupported types for add.");
             }
         }
     }

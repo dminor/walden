@@ -46,9 +46,8 @@ fn assemble(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
         }
         parser::Ast::Value(v) => match v.token {
             lexer::Token::Number(n) => {
-                vm.fconsts.push(n);
                 vm.instructions
-                    .push(vm::Opcode::ConstF(vm.fconsts.len() - 1));
+                    .push(vm::Opcode::Const(vm::Value::Number(n)));
             }
             _ => {
                 return Err(RuntimeError {
@@ -72,7 +71,13 @@ pub fn eval(ast: &parser::Ast) -> Result<f64, RuntimeError> {
     assemble(ast, &mut vm)?;
     match vm.run() {
         Ok(()) => match vm.stack.pop() {
-            Some(n) => Ok(n),
+            Some(vm::Value::Number(n)) => Ok(n),
+            Some(_) => {
+                return Err(RuntimeError {
+                    err: "Unsupported value.".to_string(),
+                    line: usize::max_value(),
+                });
+            }
             None => {
                 return Err(RuntimeError {
                     err: "vm error.".to_string(),
