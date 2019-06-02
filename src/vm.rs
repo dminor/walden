@@ -36,6 +36,12 @@ pub enum Opcode {
     Const(Value),
     Mul,
     Sub,
+    Less,
+    LessEqual,
+    Equal,
+    NotEqual,
+    Greater,
+    GreaterEqual,
 }
 
 impl fmt::Display for Opcode {
@@ -46,6 +52,12 @@ impl fmt::Display for Opcode {
             Opcode::Mul => write!(f, "mul"),
             Opcode::Const(obj) => write!(f, "const {}", obj),
             Opcode::Sub => write!(f, "sub"),
+            Opcode::Less => write!(f, "lt"),
+            Opcode::LessEqual => write!(f, "le"),
+            Opcode::Equal => write!(f, "eq"),
+            Opcode::NotEqual => write!(f, "ne"),
+            Opcode::Greater => write!(f, "gt"),
+            Opcode::GreaterEqual => write!(f, "ge"),
         }
     }
 }
@@ -116,6 +128,30 @@ impl VirtualMachine {
                 Opcode::Div => apply_op!(self, Number, Number, /, Div),
                 Opcode::Mul => apply_op!(self, Number, Number, *, Mul),
                 Opcode::Sub => apply_op!(self, Number, Number, -, Sub),
+                Opcode::Less => apply_op!(self, Number, Boolean, <, Less),
+                Opcode::LessEqual => apply_op!(self, Number, Boolean, <=, LessEqual),
+                Opcode::Equal => match self.stack.last() {
+                    Some(Value::Number(_)) => apply_op!(self, Number, Boolean, ==, Equal),
+                    Some(Value::Boolean(_)) => apply_op!(self, Boolean, Boolean, ==, Equal),
+                    None => {
+                        return Err(RuntimeError {
+                            err: "Stack underflow.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                },
+                Opcode::NotEqual => match self.stack.last() {
+                    Some(Value::Number(_)) => apply_op!(self, Number, Boolean, !=, NotEqual),
+                    Some(Value::Boolean(_)) => apply_op!(self, Boolean, Boolean, !=, NotEqual),
+                    None => {
+                        return Err(RuntimeError {
+                            err: "Stack underflow.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                },
+                Opcode::Greater => apply_op!(self, Number, Boolean, >, Greater),
+                Opcode::GreaterEqual => apply_op!(self, Number, Boolean, >=, GreaterEqual),
             }
             self.ip += 1;
         }
@@ -299,6 +335,181 @@ mod tests {
             }
             Err(e) => {
                 assert_eq!(e.err, "Unsupported types for add.");
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(1.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions.push(vm::Opcode::Less);
+        match vm.run() {
+            Ok(()) => {
+                assert_eq!(vm.stack.len(), 1);
+                assert_eq!(vm.ip, 3);
+
+                match vm.stack.pop() {
+                    Some(vm::Value::Boolean(b)) => {
+                        assert_eq!(b, true);
+                    }
+                    _ => {
+                        assert!(false);
+                    }
+                }
+            }
+            _ => {
+                assert!(false);
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions.push(vm::Opcode::LessEqual);
+        match vm.run() {
+            Ok(()) => {
+                assert_eq!(vm.stack.len(), 1);
+                assert_eq!(vm.ip, 3);
+
+                match vm.stack.pop() {
+                    Some(vm::Value::Boolean(b)) => {
+                        assert_eq!(b, true);
+                    }
+                    _ => {
+                        assert!(false);
+                    }
+                }
+            }
+            _ => {
+                assert!(false);
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions.push(vm::Opcode::Equal);
+        match vm.run() {
+            Ok(()) => {
+                assert_eq!(vm.stack.len(), 1);
+                assert_eq!(vm.ip, 3);
+
+                match vm.stack.pop() {
+                    Some(vm::Value::Boolean(b)) => {
+                        assert_eq!(b, true);
+                    }
+                    _ => {
+                        assert!(false);
+                    }
+                }
+            }
+            _ => {
+                assert!(false);
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions.push(vm::Opcode::NotEqual);
+        match vm.run() {
+            Ok(()) => {
+                assert_eq!(vm.stack.len(), 1);
+                assert_eq!(vm.ip, 3);
+
+                match vm.stack.pop() {
+                    Some(vm::Value::Boolean(b)) => {
+                        assert_eq!(b, false);
+                    }
+                    _ => {
+                        assert!(false);
+                    }
+                }
+            }
+            _ => {
+                assert!(false);
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions.push(vm::Opcode::Greater);
+        match vm.run() {
+            Ok(()) => {
+                assert_eq!(vm.stack.len(), 1);
+                assert_eq!(vm.ip, 3);
+
+                match vm.stack.pop() {
+                    Some(vm::Value::Boolean(b)) => {
+                        assert_eq!(b, false);
+                    }
+                    _ => {
+                        assert!(false);
+                    }
+                }
+            }
+            _ => {
+                assert!(false);
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Number(2.0)));
+        vm.instructions.push(vm::Opcode::GreaterEqual);
+        match vm.run() {
+            Ok(()) => {
+                assert_eq!(vm.stack.len(), 1);
+                assert_eq!(vm.ip, 3);
+
+                match vm.stack.pop() {
+                    Some(vm::Value::Boolean(b)) => {
+                        assert_eq!(b, true);
+                    }
+                    _ => {
+                        assert!(false);
+                    }
+                }
+            }
+            _ => {
+                assert!(false);
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Boolean(true)));
+        vm.instructions
+            .push(vm::Opcode::Const(vm::Value::Boolean(false)));
+        vm.instructions.push(vm::Opcode::Equal);
+        match vm.run() {
+            Ok(()) => {
+                assert_eq!(vm.stack.len(), 1);
+                assert_eq!(vm.ip, 3);
+
+                match vm.stack.pop() {
+                    Some(vm::Value::Boolean(b)) => {
+                        assert_eq!(b, false);
+                    }
+                    _ => {
+                        assert!(false);
+                    }
+                }
+            }
+            _ => {
+                assert!(false);
             }
         }
     }

@@ -18,11 +18,11 @@ impl fmt::Display for RuntimeError {
 
 impl Error for RuntimeError {}
 
-fn assemble(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), RuntimeError> {
+fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), RuntimeError> {
     match ast {
         parser::Ast::Binary(op, lhs, rhs) => {
-            assemble(lhs, vm)?;
-            assemble(rhs, vm)?;
+            generate(lhs, vm)?;
+            generate(rhs, vm)?;
             match op.token {
                 lexer::Token::Plus => {
                     vm.instructions.push(vm::Opcode::Add);
@@ -36,6 +36,24 @@ fn assemble(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
                 lexer::Token::Slash => {
                     vm.instructions.push(vm::Opcode::Div);
                 }
+                lexer::Token::Less => {
+                    vm.instructions.push(vm::Opcode::Less);
+                }
+                lexer::Token::LessEqual => {
+                    vm.instructions.push(vm::Opcode::LessEqual);
+                }
+                lexer::Token::Equal => {
+                    vm.instructions.push(vm::Opcode::Equal);
+                }
+                lexer::Token::NotEqual => {
+                    vm.instructions.push(vm::Opcode::NotEqual);
+                }
+                lexer::Token::Greater => {
+                    vm.instructions.push(vm::Opcode::Greater);
+                }
+                lexer::Token::GreaterEqual => {
+                    vm.instructions.push(vm::Opcode::GreaterEqual);
+                }
                 _ => {
                     return Err(RuntimeError {
                         err: "Unsupported operation.".to_string(),
@@ -45,9 +63,17 @@ fn assemble(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
             }
         }
         parser::Ast::Value(v) => match v.token {
+            lexer::Token::True => {
+                vm.instructions
+                    .push(vm::Opcode::Const(vm::Value::Boolean(true)));
+            }
             lexer::Token::Number(n) => {
                 vm.instructions
                     .push(vm::Opcode::Const(vm::Value::Number(n)));
+            }
+            lexer::Token::False => {
+                vm.instructions
+                    .push(vm::Opcode::Const(vm::Value::Boolean(false)));
             }
             _ => {
                 return Err(RuntimeError {
@@ -66,21 +92,15 @@ fn assemble(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
     Ok(())
 }
 
-pub fn eval(ast: &parser::Ast) -> Result<f64, RuntimeError> {
+pub fn eval(ast: &parser::Ast) -> Result<vm::Value, RuntimeError> {
     let mut vm = vm::VirtualMachine::new();
-    assemble(ast, &mut vm)?;
+    generate(ast, &mut vm)?;
     match vm.run() {
         Ok(()) => match vm.stack.pop() {
-            Some(vm::Value::Number(n)) => Ok(n),
-            Some(_) => {
-                return Err(RuntimeError {
-                    err: "Unsupported value.".to_string(),
-                    line: usize::max_value(),
-                });
-            }
+            Some(v) => Ok(v),
             None => {
                 return Err(RuntimeError {
-                    err: "vm error.".to_string(),
+                    err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 });
             }
@@ -99,14 +119,15 @@ mod tests {
     use crate::interpreter;
     use crate::lexer;
     use crate::parser;
+    use crate::vm;
 
     macro_rules! eval {
-        ($input:expr, $value:expr) => {{
+        ($input:expr, $type:ident, $value:expr) => {{
             match lexer::scan($input) {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
                     Ok(ast) => match interpreter::eval(&ast) {
-                        Ok(n) => {
-                            assert_eq!(n, $value);
+                        Ok(vm::Value::$type(v)) => {
+                            assert_eq!(v, $value);
                         }
                         _ => assert!(false),
                     },
@@ -119,12 +140,17 @@ mod tests {
 
     #[test]
     fn evals() {
-        eval!("42", 42.0);
-        eval!("1 + 2", 3.0);
-        eval!("1 - 2", -1.0);
-        eval!("1 - -2", 3.0);
-        eval!("3 * -2", -6.0);
-        eval!("1 / 2", 0.5);
-        eval!("1 + 2 + 3", 6.0);
+        eval!("42", Number, 42.0);
+        eval!("1 + 2", Number, 3.0);
+        eval!("1 - 2", Number, -1.0);
+        eval!("1 - -2", Number, 3.0);
+        eval!("3 * -2", Number, -6.0);
+        eval!("1 / 2", Number, 0.5);
+        eval!("1 + 2 + 3", Number, 6.0);
+        eval!("true", Boolean, true);
+        eval!("false", Boolean, false);
+        eval!("1 <= 3", Boolean, true);
+        eval!("1 < 3 = true", Boolean, true);
+        eval!("1 < 3 ~= false", Boolean, true);
     }
 }
