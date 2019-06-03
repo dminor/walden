@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct VMError {
@@ -15,21 +17,43 @@ impl fmt::Display for VMError {
 
 impl Error for VMError {}
 
+#[derive(Debug, Default)]
+pub struct Object {
+    prototype: Option<Rc<Object>>,
+    members: HashMap<String, Value>,
+}
+
+impl Object {
+    pub fn new() -> Object {
+        Object {
+            prototype: None,
+            members: HashMap::new(),
+        }
+    }
+
+    pub fn new_with_prototype(proto: Rc<Object>) -> Object {
+        Object {
+            prototype: Some(proto),
+            members: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Value {
-    Boolean(bool),
-    Nil,
-    Number(f64),
-    String(String),
+    Boolean(Rc<Object>, bool),
+    Nil(Rc<Object>),
+    Number(Rc<Object>, f64),
+    String(Rc<Object>, String),
 }
 
 impl fmt::Display for Value {
     fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Value::Boolean(b) => write!(f, "{}", b),
-            Value::Nil => write!(f, "nil"),
-            Value::Number(n) => write!(f, "{}", n),
-            Value::String(s) => write!(f, "{}", s),
+            Value::Boolean(_, b) => write!(f, "{}", b),
+            Value::Nil(_) => write!(f, "nil"),
+            Value::Number(_, n) => write!(f, "{}", n),
+            Value::String(_, s) => write!(f, "{}", s),
         }
     }
 }
@@ -71,14 +95,21 @@ pub struct VirtualMachine {
     pub stack: Vec<Value>,
     pub instructions: Vec<Opcode>,
     pub ip: usize,
+
+    // Prototypes for builtin objects
+    pub object: Rc<Object>,
+    pub boolean: Rc<Object>,
+    pub nil: Rc<Object>,
+    pub number: Rc<Object>,
+    pub string: Rc<Object>,
 }
 
 macro_rules! apply_op {
-    ($self:tt, $in:tt, $out:tt, $rustop:tt, $opcode:tt) => (
+    ($self:tt, $in:tt, $out:tt, $proto:expr, $rustop:tt, $opcode:tt) => (
         match $self.stack.pop() {
-            Some(Value::$in(a)) => match $self.stack.pop() {
-                Some(Value::$in(b)) => {
-                    $self.stack.push(Value::$out(b $rustop a));
+            Some(Value::$in(_, a)) => match $self.stack.pop() {
+                Some(Value::$in(_, b)) => {
+                    $self.stack.push(Value::$out($proto, b $rustop a));
                 }
                 None => {
                     return Err(VMError {
@@ -118,9 +149,11 @@ macro_rules! apply_op {
 macro_rules! apply_eq {
     ($self:tt, $in:tt) => {
         match $self.stack.pop() {
-            Some(Value::$in(a)) => match $self.stack.pop() {
-                Some(Value::$in(b)) => {
-                    $self.stack.push(Value::Boolean(b == a));
+            Some(Value::$in(_, a)) => match $self.stack.pop() {
+                Some(Value::$in(_, b)) => {
+                    $self
+                        .stack
+                        .push(Value::Boolean($self.boolean.clone(), b == a));
                 }
                 None => {
                     return Err(VMError {
@@ -129,7 +162,9 @@ macro_rules! apply_eq {
                     });
                 }
                 _ => {
-                    $self.stack.push(Value::Boolean(false));
+                    $self
+                        .stack
+                        .push(Value::Boolean($self.boolean.clone(), false));
                 }
             },
             None => {
@@ -146,9 +181,11 @@ macro_rules! apply_eq {
 macro_rules! apply_neq {
     ($self:tt, $in:tt) => {
         match $self.stack.pop() {
-            Some(Value::$in(a)) => match $self.stack.pop() {
-                Some(Value::$in(b)) => {
-                    $self.stack.push(Value::Boolean(b != a));
+            Some(Value::$in(_, a)) => match $self.stack.pop() {
+                Some(Value::$in(_, b)) => {
+                    $self
+                        .stack
+                        .push(Value::Boolean($self.boolean.clone(), b != a));
                 }
                 None => {
                     return Err(VMError {
@@ -157,7 +194,9 @@ macro_rules! apply_neq {
                     });
                 }
                 _ => {
-                    $self.stack.push(Value::Boolean(true));
+                    $self
+                        .stack
+                        .push(Value::Boolean($self.boolean.clone(), true));
                 }
             },
             None => {
@@ -190,19 +229,27 @@ impl VirtualMachine {
                 "const" => {
                     if split.len() == 2 {
                         if split[1] == "false" {
-                            self.instructions.push(Opcode::Const(Value::Boolean(false)));
+                            self.instructions
+                                .push(Opcode::Const(Value::Boolean(self.boolean.clone(), false)));
                         } else if split[1] == "nil" {
-                            self.instructions.push(Opcode::Const(Value::Nil));
+                            self.instructions
+                                .push(Opcode::Const(Value::Nil(self.nil.clone())));
                         } else if split[1] == "true" {
-                            self.instructions.push(Opcode::Const(Value::Boolean(true)));
+                            self.instructions
+                                .push(Opcode::Const(Value::Boolean(self.boolean.clone(), true)));
                         } else {
                             if let Some('\'') = split[1].chars().next() {
-                                self.instructions
-                                    .push(Opcode::Const(Value::String(split[1][1..].to_string())));
+                                self.instructions.push(Opcode::Const(Value::String(
+                                    self.string.clone(),
+                                    split[1][1..].to_string(),
+                                )));
                             } else {
                                 match split[1].parse::<f64>() {
                                     Ok(n) => {
-                                        self.instructions.push(Opcode::Const(Value::Number(n)));
+                                        self.instructions.push(Opcode::Const(Value::Number(
+                                            self.number.clone(),
+                                            n,
+                                        )));
                                     }
                                     _ => {
                                         return Err(VMError {
@@ -267,34 +314,36 @@ impl VirtualMachine {
         self.ip = 0;
         while self.ip < self.instructions.len() {
             match &self.instructions[self.ip] {
-                Opcode::Add => apply_op!(self, Number, Number, +, Add),
+                Opcode::Add => apply_op!(self, Number, Number, self.number.clone(), +, Add),
                 Opcode::Const(obj) => match obj {
-                    Value::Boolean(b) => {
-                        self.stack.push(Value::Boolean(*b));
+                    Value::Boolean(proto, b) => {
+                        self.stack.push(Value::Boolean(proto.clone(), *b));
                     }
-                    Value::Nil => {
-                        self.stack.push(Value::Nil);
+                    Value::Nil(proto) => {
+                        self.stack.push(Value::Nil(proto.clone()));
                     }
-                    Value::Number(n) => {
-                        self.stack.push(Value::Number(*n));
+                    Value::Number(proto, n) => {
+                        self.stack.push(Value::Number(proto.clone(), *n));
                     }
-                    Value::String(s) => {
-                        self.stack.push(Value::String(s.to_string()));
+                    Value::String(proto, s) => {
+                        self.stack.push(Value::String(proto.clone(), s.to_string()));
                     }
                 },
-                Opcode::Div => apply_op!(self, Number, Number, /, Div),
-                Opcode::Mul => apply_op!(self, Number, Number, *, Mul),
-                Opcode::Sub => apply_op!(self, Number, Number, -, Sub),
-                Opcode::Less => apply_op!(self, Number, Boolean, <, Less),
-                Opcode::LessEqual => apply_op!(self, Number, Boolean, <=, LessEqual),
+                Opcode::Div => apply_op!(self, Number, Number, self.number.clone(),  /, Div),
+                Opcode::Mul => apply_op!(self, Number, Number, self.number.clone(),  *, Mul),
+                Opcode::Sub => apply_op!(self, Number, Number, self.number.clone(),  -, Sub),
+                Opcode::Less => apply_op!(self, Number, Boolean, self.boolean.clone(),  <, Less),
+                Opcode::LessEqual => {
+                    apply_op!(self, Number, Boolean, self.boolean.clone(), <=, LessEqual)
+                }
                 Opcode::Equal => match self.stack.last() {
-                    Some(Value::Boolean(_)) => apply_eq!(self, Boolean),
-                    Some(Value::Number(_)) => apply_eq!(self, Number),
-                    Some(Value::String(_)) => apply_eq!(self, String),
-                    Some(Value::Nil) => match self.stack.pop() {
-                        Some(Value::Nil) => match self.stack.pop() {
-                            Some(Value::Nil) => {
-                                self.stack.push(Value::Boolean(true));
+                    Some(Value::Boolean(_, _)) => apply_eq!(self, Boolean),
+                    Some(Value::Number(_, _)) => apply_eq!(self, Number),
+                    Some(Value::String(_, _)) => apply_eq!(self, String),
+                    Some(Value::Nil(_)) => match self.stack.pop() {
+                        Some(Value::Nil(_)) => match self.stack.pop() {
+                            Some(Value::Nil(_)) => {
+                                self.stack.push(Value::Boolean(self.boolean.clone(), true));
                             }
                             None => {
                                 return Err(VMError {
@@ -303,7 +352,7 @@ impl VirtualMachine {
                                 });
                             }
                             _ => {
-                                self.stack.push(Value::Boolean(false));
+                                self.stack.push(Value::Boolean(self.boolean.clone(), false));
                             }
                         },
                         None => {
@@ -322,13 +371,13 @@ impl VirtualMachine {
                     }
                 },
                 Opcode::NotEqual => match self.stack.last() {
-                    Some(Value::Boolean(_)) => apply_neq!(self, Boolean),
-                    Some(Value::Number(_)) => apply_neq!(self, Number),
-                    Some(Value::String(_)) => apply_neq!(self, String),
-                    Some(Value::Nil) => match self.stack.pop() {
-                        Some(Value::Nil) => match self.stack.pop() {
-                            Some(Value::Nil) => {
-                                self.stack.push(Value::Boolean(false));
+                    Some(Value::Boolean(_, _)) => apply_neq!(self, Boolean),
+                    Some(Value::Number(_, _)) => apply_neq!(self, Number),
+                    Some(Value::String(_, _)) => apply_neq!(self, String),
+                    Some(Value::Nil(_)) => match self.stack.pop() {
+                        Some(Value::Nil(_)) => match self.stack.pop() {
+                            Some(Value::Nil(_)) => {
+                                self.stack.push(Value::Boolean(self.boolean.clone(), false));
                             }
                             None => {
                                 return Err(VMError {
@@ -337,7 +386,7 @@ impl VirtualMachine {
                                 });
                             }
                             _ => {
-                                self.stack.push(Value::Boolean(true));
+                                self.stack.push(Value::Boolean(self.boolean.clone(), true));
                             }
                         },
                         None => {
@@ -347,7 +396,7 @@ impl VirtualMachine {
                             });
                         }
                         _ => {
-                            self.stack.push(Value::Boolean(true));
+                            self.stack.push(Value::Boolean(self.boolean.clone(), true));
                         }
                     },
                     None => {
@@ -357,8 +406,12 @@ impl VirtualMachine {
                         });
                     }
                 },
-                Opcode::Greater => apply_op!(self, Number, Boolean, >, Greater),
-                Opcode::GreaterEqual => apply_op!(self, Number, Boolean, >=, GreaterEqual),
+                Opcode::Greater => {
+                    apply_op!(self, Number, Boolean, self.boolean.clone(), >, Greater)
+                }
+                Opcode::GreaterEqual => {
+                    apply_op!(self, Number, Boolean, self.boolean.clone(), >=, GreaterEqual)
+                }
             }
             self.ip += 1;
         }
@@ -366,10 +419,17 @@ impl VirtualMachine {
     }
 
     pub fn new() -> VirtualMachine {
+        let object = Rc::new(Object::new());
+
         VirtualMachine {
             stack: Vec::new(),
             instructions: Vec::new(),
             ip: 0,
+            object: object.clone(),
+            boolean: Rc::new(Object::new_with_prototype(object.clone())),
+            nil: Rc::new(Object::new_with_prototype(object.clone())),
+            number: Rc::new(Object::new_with_prototype(object.clone())),
+            string: Rc::new(Object::new_with_prototype(object.clone())),
         }
     }
 }
@@ -387,7 +447,7 @@ mod tests {
                         assert_eq!(vm.stack.len(), $stack);
                         assert_eq!(vm.ip, $ip);
                         match vm.stack.pop() {
-                            Some(vm::Value::$type(v)) => {
+                            Some(vm::Value::$type(_, v)) => {
                                 assert_eq!(v, $value);
                             }
                             _ => {

@@ -64,23 +64,30 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
         }
         parser::Ast::Value(v) => match &v.token {
             lexer::Token::False => {
-                vm.instructions
-                    .push(vm::Opcode::Const(vm::Value::Boolean(false)));
+                vm.instructions.push(vm::Opcode::Const(vm::Value::Boolean(
+                    vm.boolean.clone(),
+                    false,
+                )));
             }
             lexer::Token::Nil => {
-                vm.instructions.push(vm::Opcode::Const(vm::Value::Nil));
+                vm.instructions
+                    .push(vm::Opcode::Const(vm::Value::Nil(vm.nil.clone())));
             }
             lexer::Token::Number(n) => {
                 vm.instructions
-                    .push(vm::Opcode::Const(vm::Value::Number(*n)));
+                    .push(vm::Opcode::Const(vm::Value::Number(vm.number.clone(), *n)));
             }
             lexer::Token::String(s) => {
-                vm.instructions
-                    .push(vm::Opcode::Const(vm::Value::String(s.to_string())));
+                vm.instructions.push(vm::Opcode::Const(vm::Value::String(
+                    vm.string.clone(),
+                    s.to_string(),
+                )));
             }
             lexer::Token::True => {
-                vm.instructions
-                    .push(vm::Opcode::Const(vm::Value::Boolean(true)));
+                vm.instructions.push(vm::Opcode::Const(vm::Value::Boolean(
+                    vm.boolean.clone(),
+                    true,
+                )));
             }
             _ => {
                 return Err(RuntimeError {
@@ -133,7 +140,7 @@ mod tests {
             match lexer::scan($input) {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
                     Ok(ast) => match interpreter::eval(&ast) {
-                        Ok(vm::Value::$type(v)) => {
+                        Ok(vm::Value::$type(_, v)) => {
                             assert_eq!(v, $value);
                         }
                         _ => assert!(false),
