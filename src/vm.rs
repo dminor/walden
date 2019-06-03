@@ -44,6 +44,7 @@ pub enum Value {
     Boolean(Rc<Object>, bool),
     Nil(Rc<Object>),
     Number(Rc<Object>, f64),
+    Object(Rc<Object>),
     String(Rc<Object>, String),
 }
 
@@ -53,6 +54,7 @@ impl fmt::Display for Value {
             Value::Boolean(_, b) => write!(f, "{}", b),
             Value::Nil(_) => write!(f, "nil"),
             Value::Number(_, n) => write!(f, "{}", n),
+            Value::Object(_) => write!(f, "(object)"),
             Value::String(_, s) => write!(f, "{}", s),
         }
     }
@@ -325,6 +327,12 @@ impl VirtualMachine {
                     Value::Number(proto, n) => {
                         self.stack.push(Value::Number(proto.clone(), *n));
                     }
+                    Value::Object(_) => {
+                        return Err(VMError {
+                            err: "Object constants are not supported.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
                     Value::String(proto, s) => {
                         self.stack.push(Value::String(proto.clone(), s.to_string()));
                     }
@@ -339,6 +347,30 @@ impl VirtualMachine {
                 Opcode::Equal => match self.stack.last() {
                     Some(Value::Boolean(_, _)) => apply_eq!(self, Boolean),
                     Some(Value::Number(_, _)) => apply_eq!(self, Number),
+                    Some(Value::Object(_)) => match self.stack.pop() {
+                        Some(Value::Object(a)) => match self.stack.pop() {
+                            Some(Value::Object(b)) => {
+                                self.stack
+                                    .push(Value::Boolean(self.boolean.clone(), Rc::ptr_eq(&a, &b)));
+                            }
+                            None => {
+                                return Err(VMError {
+                                    err: "Stack underflow.".to_string(),
+                                    line: usize::max_value(),
+                                });
+                            }
+                            _ => {
+                                self.stack.push(Value::Boolean(self.boolean.clone(), false));
+                            }
+                        },
+                        None => {
+                            return Err(VMError {
+                                err: "Stack underflow.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                        _ => unreachable!(),
+                    },
                     Some(Value::String(_, _)) => apply_eq!(self, String),
                     Some(Value::Nil(_)) => match self.stack.pop() {
                         Some(Value::Nil(_)) => match self.stack.pop() {
@@ -373,6 +405,32 @@ impl VirtualMachine {
                 Opcode::NotEqual => match self.stack.last() {
                     Some(Value::Boolean(_, _)) => apply_neq!(self, Boolean),
                     Some(Value::Number(_, _)) => apply_neq!(self, Number),
+                    Some(Value::Object(_)) => match self.stack.pop() {
+                        Some(Value::Object(a)) => match self.stack.pop() {
+                            Some(Value::Object(b)) => {
+                                self.stack.push(Value::Boolean(
+                                    self.boolean.clone(),
+                                    !Rc::ptr_eq(&a, &b),
+                                ));
+                            }
+                            None => {
+                                return Err(VMError {
+                                    err: "Stack underflow.".to_string(),
+                                    line: usize::max_value(),
+                                });
+                            }
+                            _ => {
+                                self.stack.push(Value::Boolean(self.boolean.clone(), false));
+                            }
+                        },
+                        None => {
+                            return Err(VMError {
+                                err: "Stack underflow.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                        _ => unreachable!(),
+                    },
                     Some(Value::String(_, _)) => apply_neq!(self, String),
                     Some(Value::Nil(_)) => match self.stack.pop() {
                         Some(Value::Nil(_)) => match self.stack.pop() {
