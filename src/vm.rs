@@ -18,6 +18,7 @@ impl Error for VMError {}
 #[derive(Debug)]
 pub enum Value {
     Boolean(bool),
+    Nil,
     Number(f64),
     String(String),
 }
@@ -26,6 +27,7 @@ impl fmt::Display for Value {
     fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Value::Boolean(b) => write!(f, "{}", b),
+            Value::Nil => write!(f, "nil"),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
         }
@@ -78,7 +80,13 @@ macro_rules! apply_op {
                 Some(Value::$in(b)) => {
                     $self.stack.push(Value::$out(b $rustop a));
                 }
-                Some(_) => {
+                None => {
+                    return Err(VMError {
+                        err: "Stack underflow.".to_string(),
+                        line: usize::max_value(),
+                    });
+                }
+                _ => {
                     let mut err = "Unsupported types for ".to_string();
                     err.push_str(&Opcode::$opcode.to_string());
                     err.push('.');
@@ -87,14 +95,14 @@ macro_rules! apply_op {
                         line: usize::max_value(),
                     });
                 }
-                None => {
-                    return Err(VMError {
-                        err: "Stack underflow.".to_string(),
-                        line: usize::max_value(),
-                    });
-                }
             },
-            Some(_) => {
+            None => {
+                return Err(VMError {
+                    err: "Stack underflow.".to_string(),
+                    line: usize::max_value(),
+                });
+            }
+            _ => {
                 let mut err = "Unsupported types for ".to_string();
                 err.push_str(&Opcode::$opcode.to_string());
                 err.push('.');
@@ -103,14 +111,64 @@ macro_rules! apply_op {
                     line: usize::max_value(),
                 });
             }
+        }
+    );
+}
+
+macro_rules! apply_eq {
+    ($self:tt, $in:tt) => {
+        match $self.stack.pop() {
+            Some(Value::$in(a)) => match $self.stack.pop() {
+                Some(Value::$in(b)) => {
+                    $self.stack.push(Value::Boolean(b == a));
+                }
+                None => {
+                    return Err(VMError {
+                        err: "Stack underflow.".to_string(),
+                        line: usize::max_value(),
+                    });
+                }
+                _ => {
+                    $self.stack.push(Value::Boolean(false));
+                }
+            },
             None => {
                 return Err(VMError {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 });
             }
+            _ => unreachable!(),
         }
-    );
+    };
+}
+
+macro_rules! apply_neq {
+    ($self:tt, $in:tt) => {
+        match $self.stack.pop() {
+            Some(Value::$in(a)) => match $self.stack.pop() {
+                Some(Value::$in(b)) => {
+                    $self.stack.push(Value::Boolean(b != a));
+                }
+                None => {
+                    return Err(VMError {
+                        err: "Stack underflow.".to_string(),
+                        line: usize::max_value(),
+                    });
+                }
+                _ => {
+                    $self.stack.push(Value::Boolean(true));
+                }
+            },
+            None => {
+                return Err(VMError {
+                    err: "Stack underflow.".to_string(),
+                    line: usize::max_value(),
+                });
+            }
+            _ => unreachable!(),
+        }
+    };
 }
 
 impl VirtualMachine {
@@ -131,10 +189,12 @@ impl VirtualMachine {
             match split[0] {
                 "const" => {
                     if split.len() == 2 {
-                        if split[1] == "true" {
-                            self.instructions.push(Opcode::Const(Value::Boolean(true)));
-                        } else if split[1] == "false" {
+                        if split[1] == "false" {
                             self.instructions.push(Opcode::Const(Value::Boolean(false)));
+                        } else if split[1] == "nil" {
+                            self.instructions.push(Opcode::Const(Value::Nil));
+                        } else if split[1] == "true" {
+                            self.instructions.push(Opcode::Const(Value::Boolean(true)));
                         } else {
                             if let Some('\'') = split[1].chars().next() {
                                 self.instructions
@@ -212,6 +272,9 @@ impl VirtualMachine {
                     Value::Boolean(b) => {
                         self.stack.push(Value::Boolean(*b));
                     }
+                    Value::Nil => {
+                        self.stack.push(Value::Nil);
+                    }
                     Value::Number(n) => {
                         self.stack.push(Value::Number(*n));
                     }
@@ -225,9 +288,32 @@ impl VirtualMachine {
                 Opcode::Less => apply_op!(self, Number, Boolean, <, Less),
                 Opcode::LessEqual => apply_op!(self, Number, Boolean, <=, LessEqual),
                 Opcode::Equal => match self.stack.last() {
-                    Some(Value::Boolean(_)) => apply_op!(self, Boolean, Boolean, ==, Equal),
-                    Some(Value::Number(_)) => apply_op!(self, Number, Boolean, ==, Equal),
-                    Some(Value::String(_)) => apply_op!(self, String, Boolean, ==, Equal),
+                    Some(Value::Boolean(_)) => apply_eq!(self, Boolean),
+                    Some(Value::Number(_)) => apply_eq!(self, Number),
+                    Some(Value::String(_)) => apply_eq!(self, String),
+                    Some(Value::Nil) => match self.stack.pop() {
+                        Some(Value::Nil) => match self.stack.pop() {
+                            Some(Value::Nil) => {
+                                self.stack.push(Value::Boolean(true));
+                            }
+                            None => {
+                                return Err(VMError {
+                                    err: "Stack underflow.".to_string(),
+                                    line: usize::max_value(),
+                                });
+                            }
+                            _ => {
+                                self.stack.push(Value::Boolean(false));
+                            }
+                        },
+                        None => {
+                            return Err(VMError {
+                                err: "Stack underflow.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                        _ => unreachable!(),
+                    },
                     None => {
                         return Err(VMError {
                             err: "Stack underflow.".to_string(),
@@ -236,9 +322,34 @@ impl VirtualMachine {
                     }
                 },
                 Opcode::NotEqual => match self.stack.last() {
-                    Some(Value::Boolean(_)) => apply_op!(self, Boolean, Boolean, !=, NotEqual),
-                    Some(Value::Number(_)) => apply_op!(self, Number, Boolean, !=, NotEqual),
-                    Some(Value::String(_)) => apply_op!(self, String, Boolean, !=, NotEqual),
+                    Some(Value::Boolean(_)) => apply_neq!(self, Boolean),
+                    Some(Value::Number(_)) => apply_neq!(self, Number),
+                    Some(Value::String(_)) => apply_neq!(self, String),
+                    Some(Value::Nil) => match self.stack.pop() {
+                        Some(Value::Nil) => match self.stack.pop() {
+                            Some(Value::Nil) => {
+                                self.stack.push(Value::Boolean(false));
+                            }
+                            None => {
+                                return Err(VMError {
+                                    err: "Stack underflow.".to_string(),
+                                    line: usize::max_value(),
+                                });
+                            }
+                            _ => {
+                                self.stack.push(Value::Boolean(true));
+                            }
+                        },
+                        None => {
+                            return Err(VMError {
+                                err: "Stack underflow.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                        _ => {
+                            self.stack.push(Value::Boolean(true));
+                        }
+                    },
                     None => {
                         return Err(VMError {
                             err: "Stack underflow.".to_string(),
@@ -547,6 +658,66 @@ mod tests {
             const 'hello
             const 'world
             eq
+        ",
+            1,
+            3,
+            Boolean,
+            false
+        );
+
+        run!(
+            "
+            const 'hello
+            const 2
+            eq
+        ",
+            1,
+            3,
+            Boolean,
+            false
+        );
+
+        run!(
+            "
+            const nil
+            const nil
+            eq
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
+
+        run!(
+            "
+            const true
+            const nil
+            eq
+        ",
+            1,
+            3,
+            Boolean,
+            false
+        );
+
+        run!(
+            "
+            const true
+            const nil
+            ne
+        ",
+            1,
+            3,
+            Boolean,
+            true
+        );
+
+        run!(
+            "
+            const 1.0
+            const 1.0
+            ne
         ",
             1,
             3,

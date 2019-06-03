@@ -67,6 +67,9 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
                 vm.instructions
                     .push(vm::Opcode::Const(vm::Value::Boolean(false)));
             }
+            lexer::Token::Nil => {
+                vm.instructions.push(vm::Opcode::Const(vm::Value::Nil));
+            }
             lexer::Token::Number(n) => {
                 vm.instructions
                     .push(vm::Opcode::Const(vm::Value::Number(*n)));
@@ -156,6 +159,7 @@ mod tests {
         eval!("1 <= 3", Boolean, true);
         eval!("1 < 3 = true", Boolean, true);
         eval!("1 < 3 ~= false", Boolean, true);
+        eval!("2 + 4 = 7 = false", Boolean, true);
         eval!("'hello world'", String, "hello world");
     }
 }
