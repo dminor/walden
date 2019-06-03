@@ -180,5 +180,7 @@ mod tests {
         eval!("1 < 3 ~= false", Boolean, true);
         eval!("2 + 4 = 7 = false", Boolean, true);
         eval!("'hello world'", String, "hello world");
+        eval!("true not", Boolean, false);
+        eval!("(3 < 2) not", Boolean, true);
     }
 }

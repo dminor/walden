@@ -6,6 +6,7 @@ use std::io::prelude::*;
 mod interpreter;
 mod lexer;
 mod parser;
+mod stdlib;
 mod vm;
 
 use std::io::{self, BufRead, Write};

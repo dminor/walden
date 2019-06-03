@@ -1,3 +1,4 @@
+use crate::stdlib;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -17,10 +18,10 @@ impl fmt::Display for VMError {
 
 impl Error for VMError {}
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Object {
     prototype: Option<Rc<Object>>,
-    members: HashMap<String, Value>,
+    pub members: HashMap<String, Value>,
 }
 
 impl Object {
@@ -31,7 +32,17 @@ impl Object {
                 None => None,
             }
         } else {
-            None
+            match self.members.get(&member) {
+                Some(v) => match v {
+                    Value::Boolean(proto, b) => Some(Value::Boolean(proto.clone(), *b)),
+                    Value::Nil(proto) => Some(Value::Nil(proto.clone())),
+                    Value::Number(proto, n) => Some(Value::Number(proto.clone(), *n)),
+                    Value::Object(obj) => Some(Value::Object(obj.clone())),
+                    Value::RustBlock(f) => Some(Value::RustBlock(*f)),
+                    Value::String(proto, s) => Some(Value::String(proto.clone(), s.to_string())),
+                },
+                None => None,
+            }
         }
     }
 
@@ -50,12 +61,12 @@ impl Object {
     }
 }
 
-#[derive(Debug)]
 pub enum Value {
     Boolean(Rc<Object>, bool),
     Nil(Rc<Object>),
     Number(Rc<Object>, f64),
     Object(Rc<Object>),
+    RustBlock(fn(&mut VirtualMachine) -> Result<(), VMError>),
     String(Rc<Object>, String),
 }
 
@@ -66,6 +77,7 @@ impl fmt::Display for Value {
             Value::Nil(_) => write!(f, "nil"),
             Value::Number(_, n) => write!(f, "{}", n),
             Value::Object(_) => write!(f, "(object)"),
+            Value::RustBlock(_) => write!(f, "(lambda)"),
             Value::String(_, s) => write!(f, "{}", s),
         }
     }
@@ -349,10 +361,10 @@ impl VirtualMachine {
                         self.stack.push(Value::Number(proto.clone(), *n));
                     }
                     Value::Object(_) => {
-                        return Err(VMError {
-                            err: "Object constants are not supported.".to_string(),
-                            line: usize::max_value(),
-                        });
+                        unreachable!();
+                    }
+                    Value::RustBlock(_) => {
+                        unreachable!();
                     }
                     Value::String(proto, s) => {
                         self.stack.push(Value::String(proto.clone(), s.to_string()));
@@ -392,7 +404,6 @@ impl VirtualMachine {
                         }
                         _ => unreachable!(),
                     },
-                    Some(Value::String(_, _)) => apply_eq!(self, String),
                     Some(Value::Nil(_)) => match self.stack.pop() {
                         Some(Value::Nil(_)) => match self.stack.pop() {
                             Some(Value::Nil(_)) => {
@@ -416,6 +427,28 @@ impl VirtualMachine {
                         }
                         _ => unreachable!(),
                     },
+
+                    Some(Value::RustBlock(_)) => match self.stack.pop() {
+                        Some(Value::RustBlock(_)) => match self.stack.pop() {
+                            None => {
+                                return Err(VMError {
+                                    err: "Stack underflow.".to_string(),
+                                    line: usize::max_value(),
+                                });
+                            }
+                            _ => {
+                                self.stack.push(Value::Boolean(self.boolean.clone(), false));
+                            }
+                        },
+                        None => {
+                            return Err(VMError {
+                                err: "Stack underflow.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                        _ => unreachable!(),
+                    },
+                    Some(Value::String(_, _)) => apply_eq!(self, String),
                     None => {
                         return Err(VMError {
                             err: "Stack underflow.".to_string(),
@@ -452,7 +485,6 @@ impl VirtualMachine {
                         }
                         _ => unreachable!(),
                     },
-                    Some(Value::String(_, _)) => apply_neq!(self, String),
                     Some(Value::Nil(_)) => match self.stack.pop() {
                         Some(Value::Nil(_)) => match self.stack.pop() {
                             Some(Value::Nil(_)) => {
@@ -478,6 +510,27 @@ impl VirtualMachine {
                             self.stack.push(Value::Boolean(self.boolean.clone(), true));
                         }
                     },
+                    Some(Value::RustBlock(_)) => match self.stack.pop() {
+                        Some(Value::RustBlock(_)) => match self.stack.pop() {
+                            None => {
+                                return Err(VMError {
+                                    err: "Stack underflow.".to_string(),
+                                    line: usize::max_value(),
+                                });
+                            }
+                            _ => {
+                                self.stack.push(Value::Boolean(self.boolean.clone(), true));
+                            }
+                        },
+                        None => {
+                            return Err(VMError {
+                                err: "Stack underflow.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                        _ => unreachable!(),
+                    },
+                    Some(Value::String(_, _)) => apply_neq!(self, String),
                     None => {
                         return Err(VMError {
                             err: "Stack underflow.".to_string(),
@@ -492,6 +545,12 @@ impl VirtualMachine {
                     apply_op!(self, Number, Boolean, self.boolean.clone(), >=, GreaterEqual)
                 }
                 Opcode::Call => match self.stack.pop() {
+                    Some(Value::RustBlock(lambda)) => match lambda(self) {
+                        Ok(()) => {}
+                        Err(err) => {
+                            return Err(err);
+                        }
+                    },
                     Some(Value::Nil(_)) => {
                         return Err(VMError {
                             err: "Attempt to call nil.".to_string(),
@@ -534,6 +593,12 @@ impl VirtualMachine {
                                 }
                             }
                         }
+                        Some(Value::RustBlock(_)) => {
+                            return Err(VMError {
+                                err: "Rustblock does not support lookup.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
                         None => {
                             return Err(VMError {
                                 err: "Stack underflow.".to_string(),
@@ -563,7 +628,7 @@ impl VirtualMachine {
     pub fn new() -> VirtualMachine {
         let object = Rc::new(Object::new());
 
-        VirtualMachine {
+        let mut vm = VirtualMachine {
             stack: Vec::new(),
             instructions: Vec::new(),
             ip: 0,
@@ -572,7 +637,10 @@ impl VirtualMachine {
             nil: Rc::new(Object::new_with_prototype(object.clone())),
             number: Rc::new(Object::new_with_prototype(object.clone())),
             string: Rc::new(Object::new_with_prototype(object.clone())),
-        }
+        };
+
+        stdlib::create_standard_objects(&mut vm);
+        vm
     }
 }
 
@@ -1024,6 +1092,21 @@ mod tests {
             call
         ",
             "Attempt to call nil."
+        );
+
+        run!(
+            "
+            const 1.0
+            const 1.0
+            ne
+            const 'not
+            lookup
+            call
+        ",
+            1,
+            6,
+            Boolean,
+            true
         );
     }
 }
