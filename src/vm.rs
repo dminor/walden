@@ -24,6 +24,17 @@ pub struct Object {
 }
 
 impl Object {
+    pub fn lookup(&self, member: String) -> Option<Value> {
+        if member == "prototype" {
+            match &self.prototype {
+                Some(proto) => Some(Value::Object(proto.clone())),
+                None => None,
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn new() -> Object {
         Object {
             prototype: None,
@@ -72,6 +83,8 @@ pub enum Opcode {
     NotEqual,
     Greater,
     GreaterEqual,
+    Call,
+    Lookup,
 }
 
 impl fmt::Display for Opcode {
@@ -88,6 +101,8 @@ impl fmt::Display for Opcode {
             Opcode::NotEqual => write!(f, "ne"),
             Opcode::Greater => write!(f, "gt"),
             Opcode::GreaterEqual => write!(f, "ge"),
+            Opcode::Call => write!(f, "call"),
+            Opcode::Lookup => write!(f, "lookup"),
         }
     }
 }
@@ -299,6 +314,12 @@ impl VirtualMachine {
                 "ge" => {
                     self.instructions.push(Opcode::GreaterEqual);
                 }
+                "call" => {
+                    self.instructions.push(Opcode::Call);
+                }
+                "lookup" => {
+                    self.instructions.push(Opcode::Lookup);
+                }
                 _ => {
                     return Err(VMError {
                         err: "Invalid instruction.".to_string(),
@@ -470,6 +491,69 @@ impl VirtualMachine {
                 Opcode::GreaterEqual => {
                     apply_op!(self, Number, Boolean, self.boolean.clone(), >=, GreaterEqual)
                 }
+                Opcode::Call => match self.stack.pop() {
+                    Some(Value::Nil(_)) => {
+                        return Err(VMError {
+                            err: "Attempt to call nil.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                    _ => {}
+                },
+                Opcode::Lookup => match self.stack.pop() {
+                    Some(Value::String(_, s)) => match self.stack.last() {
+                        Some(Value::Boolean(proto, _))
+                        | Some(Value::Nil(proto))
+                        | Some(Value::Number(proto, _))
+                        | Some(Value::String(proto, _)) => {
+                            if s == "prototype" {
+                                self.stack.push(Value::Object(proto.clone()));
+                                // skip call opcode in this case
+                                self.ip += 1;
+                            } else {
+                                match proto.lookup(s) {
+                                    Some(v) => {
+                                        self.stack.push(v);
+                                    }
+                                    None => {
+                                        self.stack.push(Value::Nil(self.nil.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        Some(Value::Object(obj)) => {
+                            if s == "prototype" {
+                                self.ip += 1;
+                            }
+                            match obj.lookup(s) {
+                                Some(v) => {
+                                    self.stack.push(v);
+                                }
+                                None => {
+                                    self.stack.push(Value::Nil(self.nil.clone()));
+                                }
+                            }
+                        }
+                        None => {
+                            return Err(VMError {
+                                err: "Stack underflow.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                    },
+                    None => {
+                        return Err(VMError {
+                            err: "Stack underflow.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                    _ => {
+                        return Err(VMError {
+                            err: "Lookup expects string.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                },
             }
             self.ip += 1;
         }
@@ -495,6 +579,7 @@ impl VirtualMachine {
 #[cfg(test)]
 mod tests {
     use crate::vm;
+    use std::rc::Rc;
 
     macro_rules! run {
         ($input:expr, $stack:expr, $ip:expr, $type:ident, $value:expr) => {{
@@ -841,6 +926,104 @@ mod tests {
             3,
             Boolean,
             false
+        );
+
+        runfails!(
+            "
+            const 1.0
+            lookup
+        ",
+            "Lookup expects string."
+        );
+
+        runfails!(
+            "
+            lookup
+        ",
+            "Stack underflow."
+        );
+
+        runfails!(
+            "
+            const 'something
+            lookup
+        ",
+            "Stack underflow."
+        );
+
+        let mut vm = vm::VirtualMachine::new();
+        match vm.assemble(
+            "
+            const true
+            const 'prototype
+            lookup
+            call
+        ",
+        ) {
+            Ok(()) => match vm.run() {
+                Ok(()) => {
+                    assert_eq!(vm.stack.len(), 2);
+                    assert_eq!(vm.ip, 4);
+                    match vm.stack.pop() {
+                        Some(vm::Value::Object(obj)) => {
+                            assert!(Rc::ptr_eq(&obj, &vm.boolean));
+                        }
+                        _ => {
+                            assert!(false);
+                        }
+                    }
+                }
+                _ => {
+                    assert!(false);
+                }
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        match vm.assemble(
+            "
+            const true
+            const 'prototype
+            lookup
+            call
+            const 'prototype
+            lookup
+            call
+        ",
+        ) {
+            Ok(()) => match vm.run() {
+                Ok(()) => {
+                    assert_eq!(vm.stack.len(), 3);
+                    assert_eq!(vm.ip, 7);
+                    match vm.stack.pop() {
+                        Some(vm::Value::Object(obj)) => {
+                            assert!(Rc::ptr_eq(&obj, &vm.object));
+                        }
+                        _ => {
+                            assert!(false);
+                        }
+                    }
+                }
+                _ => {
+                    assert!(false);
+                }
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+
+        runfails!(
+            "
+            const 2
+            const 'unknown
+            lookup
+            call
+        ",
+            "Attempt to call nil."
         );
     }
 }

@@ -69,6 +69,12 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
                     false,
                 )));
             }
+            lexer::Token::Identifier(s) => {
+                vm.instructions.push(vm::Opcode::Const(vm::Value::String(
+                    vm.string.clone(),
+                    s.to_string(),
+                )));
+            }
             lexer::Token::Nil => {
                 vm.instructions
                     .push(vm::Opcode::Const(vm::Value::Nil(vm.nil.clone())));
@@ -96,6 +102,12 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
                 });
             }
         },
+        parser::Ast::Unary(obj, msg) => {
+            generate(obj, vm)?;
+            generate(msg, vm)?;
+            vm.instructions.push(vm::Opcode::Lookup);
+            vm.instructions.push(vm::Opcode::Call);
+        }
         _ => {
             return Err(RuntimeError {
                 err: "Unimplemented.".to_string(),
