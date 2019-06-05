@@ -553,7 +553,7 @@ impl VirtualMachine {
                     },
                     Some(Value::Nil(_)) => {
                         return Err(VMError {
-                            err: "Attempt to call nil.".to_string(),
+                            err: "Message not understood.".to_string(),
                             line: usize::max_value(),
                         });
                     }
@@ -1091,7 +1091,7 @@ mod tests {
             lookup
             call
         ",
-            "Attempt to call nil."
+            "Message not understood."
         );
 
         run!(
