@@ -15,7 +15,7 @@ fn eval(filename: String, s: String) {
     let lines: Vec<&str> = s.split('\n').collect();
     match lexer::scan(&s) {
         Ok(mut tokens) => match parser::parse(&mut tokens) {
-            Ok(ast) => match interpreter::eval(&ast) {
+            Ok(ast) => match interpreter::eval(&ast, true) {
                 Ok(v) => {
                     println!("{}", v);
                 }

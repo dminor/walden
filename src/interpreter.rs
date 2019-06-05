@@ -62,6 +62,27 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
                 }
             }
         }
+        parser::Ast::Keyword(obj, msg) => {
+            let mut message_name = String::new();
+            for kw in msg {
+                message_name.push_str(&kw.0.token.to_string());
+                message_name.push(':');
+                generate(&kw.1, vm)?;
+            }
+            generate(obj, vm)?;
+            vm.instructions.push(vm::Opcode::Const(vm::Value::String(
+                vm.string.clone(),
+                message_name,
+            )));
+            vm.instructions.push(vm::Opcode::Lookup);
+            vm.instructions.push(vm::Opcode::Call);
+        }
+        parser::Ast::Unary(obj, msg) => {
+            generate(obj, vm)?;
+            generate(msg, vm)?;
+            vm.instructions.push(vm::Opcode::Lookup);
+            vm.instructions.push(vm::Opcode::Call);
+        }
         parser::Ast::Value(v) => match &v.token {
             lexer::Token::False => {
                 vm.instructions.push(vm::Opcode::Const(vm::Value::Boolean(
@@ -102,25 +123,20 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
                 });
             }
         },
-        parser::Ast::Unary(obj, msg) => {
-            generate(obj, vm)?;
-            generate(msg, vm)?;
-            vm.instructions.push(vm::Opcode::Lookup);
-            vm.instructions.push(vm::Opcode::Call);
-        }
-        _ => {
-            return Err(RuntimeError {
-                err: "Unimplemented.".to_string(),
-                line: usize::max_value(),
-            });
-        }
     }
     Ok(())
 }
 
-pub fn eval(ast: &parser::Ast) -> Result<vm::Value, RuntimeError> {
+pub fn eval(ast: &parser::Ast, show_instr: bool) -> Result<vm::Value, RuntimeError> {
     let mut vm = vm::VirtualMachine::new();
     generate(ast, &mut vm)?;
+
+    if show_instr {
+        for instr in &vm.instructions {
+            println!("    {}", instr);
+        }
+    }
+
     match vm.run() {
         Ok(()) => match vm.stack.pop() {
             Some(v) => Ok(v),
@@ -151,7 +167,7 @@ mod tests {
         ($input:expr, $type:ident, $value:expr) => {{
             match lexer::scan($input) {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
-                    Ok(ast) => match interpreter::eval(&ast) {
+                    Ok(ast) => match interpreter::eval(&ast, false) {
                         Ok(vm::Value::$type(_, v)) => {
                             assert_eq!(v, $value);
                         }
@@ -182,5 +198,8 @@ mod tests {
         eval!("'hello world'", String, "hello world");
         eval!("true not", Boolean, false);
         eval!("(3 < 2) not", Boolean, true);
+        eval!("(2 < 3) and: (1 < 3)", Boolean, true);
+        eval!("(3 < 2) and: (1 < 3)", Boolean, false);
+        eval!("(3 < 2) or: (1 < 3)", Boolean, true);
     }
 }
