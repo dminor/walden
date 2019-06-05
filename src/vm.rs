@@ -78,7 +78,7 @@ impl fmt::Display for Value {
             Value::Number(_, n) => write!(f, "{}", n),
             Value::Object(_) => write!(f, "(object)"),
             Value::RustBlock(_) => write!(f, "(lambda)"),
-            Value::String(_, s) => write!(f, "{}", s),
+            Value::String(_, s) => write!(f, "'{}'", s),
         }
     }
 }
@@ -256,7 +256,7 @@ impl VirtualMachine {
 
             match split[0] {
                 "const" => {
-                    if split.len() == 2 {
+                    if split.len() >= 2 {
                         if split[1] == "false" {
                             self.instructions
                                 .push(Opcode::Const(Value::Boolean(self.boolean.clone(), false)));
@@ -268,9 +268,15 @@ impl VirtualMachine {
                                 .push(Opcode::Const(Value::Boolean(self.boolean.clone(), true)));
                         } else {
                             if let Some('\'') = split[1].chars().next() {
+                                let mut string = split[1][1..].to_string();
+                                for s in &split[2..] {
+                                    string.push(' ');
+                                    string.push_str(s);
+                                }
+
                                 self.instructions.push(Opcode::Const(Value::String(
                                     self.string.clone(),
-                                    split[1][1..].to_string(),
+                                    string,
                                 )));
                             } else {
                                 match split[1].parse::<f64>() {
@@ -1107,6 +1113,16 @@ mod tests {
             6,
             Boolean,
             true
+        );
+
+        run!(
+            "
+            const 'hello world
+        ",
+            1,
+            1,
+            String,
+            "hello world"
         );
     }
 }
