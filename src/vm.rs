@@ -97,6 +97,7 @@ pub enum Opcode {
     GreaterEqual,
     Call,
     Lookup,
+    Pop,
 }
 
 impl fmt::Display for Opcode {
@@ -115,6 +116,7 @@ impl fmt::Display for Opcode {
             Opcode::GreaterEqual => write!(f, "ge"),
             Opcode::Call => write!(f, "call"),
             Opcode::Lookup => write!(f, "lookup"),
+            Opcode::Pop => write!(f, "pop"),
         }
     }
 }
@@ -337,6 +339,9 @@ impl VirtualMachine {
                 }
                 "lookup" => {
                     self.instructions.push(Opcode::Lookup);
+                }
+                "pop" => {
+                    self.instructions.push(Opcode::Pop);
                 }
                 _ => {
                     return Err(VMError {
@@ -624,6 +629,15 @@ impl VirtualMachine {
                             line: usize::max_value(),
                         });
                     }
+                },
+                Opcode::Pop => match self.stack.pop() {
+                    None => {
+                        return Err(VMError {
+                            err: "Stack underflow.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                    _ => {}
                 },
             }
             self.ip += 1;
@@ -1123,6 +1137,19 @@ mod tests {
             1,
             String,
             "hello world"
+        );
+
+        run!(
+            "
+            const 1
+            const 2
+            const 3
+            pop
+        ",
+            2,
+            4,
+            Number,
+            2.0
         );
     }
 }

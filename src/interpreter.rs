@@ -62,6 +62,16 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
                 }
             }
         }
+        parser::Ast::Block(_, _, statements) => {
+            let mut count = 0;
+            for statement in statements {
+                generate(statement, vm)?;
+                count += 1;
+                if count != statements.len() {
+                    vm.instructions.push(vm::Opcode::Pop);
+                }
+            }
+        }
         parser::Ast::Keyword(obj, msg) => {
             let mut message_name = String::new();
             for kw in msg {
@@ -201,5 +211,6 @@ mod tests {
         eval!("(2 < 3) and: (1 < 3).", Boolean, true);
         eval!("(3 < 2) and: (1 < 3).", Boolean, false);
         eval!("(3 < 2) or: (1 < 3).", Boolean, true);
+        eval!("[1. 2. 3.].", Number, 3.0);
     }
 }

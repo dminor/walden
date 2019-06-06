@@ -4,16 +4,20 @@ use std::error::Error;
 use std::fmt;
 
 /*
-statement      -> keyword "."
+statement      -> expression "."
 expression     -> keyword
 keyword        -> binary | binary (IDENTIFIER ":" binary)+
 binary         -> unary | unary ("+"|"-"|"*"|"/"|">"|">="|"<"|"<="|"~="|"=" unary)*
 unary          -> value | unary IDENTIFIER
 value          -> IDENTIFIER | NUMBER | STRING | "false" | "true" | "nil"
                   | "(" expression ")"
+                  | "[" (statement)* "]"
+                  | "[" (":" IDENTIFIER)+ "|" (statement)* "]"
+                  | "[" (":" IDENTIFIER)* "|" (IDENTIFIER)* "|" (statement)* "]"
 */
 
 pub enum Ast {
+    Block(Vec<lexer::LexedToken>, Vec<lexer::LexedToken>, Vec<Ast>),
     Keyword(Box<Ast>, Vec<(lexer::LexedToken, Ast)>),
     Binary(lexer::LexedToken, Box<Ast>, Box<Ast>),
     Unary(Box<Ast>, Box<Ast>),
@@ -31,6 +35,13 @@ impl fmt::Display for Ast {
                 write!(f, ")")
             }
             Ast::Binary(op, obj, msg) => write!(f, "(binary {} {} {})", op.token, *obj, *msg),
+            Ast::Block(_, _, statements) => {
+                write!(f, "(block")?;
+                for statement in statements {
+                    write!(f, " {}", statement)?;
+                }
+                write!(f, ")")
+            }
             Ast::Unary(obj, msg) => write!(f, "(unary {} {})", *obj, *msg),
             Ast::Value(t) => match &t.token {
                 lexer::Token::Identifier(_) => write!(f, "{}:Identifier", t.token),
@@ -246,6 +257,35 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                     line: token.line,
                 }),
             },
+            lexer::Token::LeftBracket => {
+                let mut statements = Vec::new();
+                loop {
+                    match tokens.front() {
+                        Some(token) => match token.token {
+                            lexer::Token::RightBracket => {
+                                break;
+                            }
+                            _ => {}
+                        },
+                        None => {
+                            return Err(ParserError {
+                                err: "Unexpected end of input while looking for ].".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                    }
+                    match statement(tokens) {
+                        Ok(ast) => {
+                            statements.push(ast);
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    }
+                }
+                expect!(tokens, RightBracket, "Expected ].".to_string());
+                Ok(Ast::Block(Vec::new(), Vec::new(), statements))
+            }
             lexer::Token::LeftParen => match expression(tokens) {
                 Ok(result) => {
                     expect!(tokens, RightParen, "Expected ).".to_string());
@@ -373,5 +413,8 @@ mod tests {
             "3 + (4 * 5).",
             "(binary + 3:Number (binary * 4:Number 5:Number))"
         );
+        parsefails!("[1. 2.", "Unexpected end of input.");
+        parse!("[].", "(block)");
+        parse!("[1. 2. 3.].", "(block 1:Number 2:Number 3:Number)");
     }
 }
