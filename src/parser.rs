@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt;
 
 /*
+statement      -> keyword "."
 expression     -> keyword
 keyword        -> binary | binary (IDENTIFIER ":" binary)+
 binary         -> unary | unary ("+"|"-"|"*"|"/"|">"|">="|"<"|"<="|"~="|"=" unary)*
@@ -75,6 +76,12 @@ macro_rules! expect {
             }
         }
     };};
+}
+
+fn statement(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
+    let result = expression(tokens);
+    expect!(tokens, Dot, "Expected '.'.".to_string());
+    result
 }
 
 fn expression(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
@@ -266,7 +273,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
 }
 
 pub fn parse(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
-    expression(tokens)
+    statement(tokens)
 }
 
 #[cfg(test)]
@@ -303,70 +310,67 @@ mod tests {
 
     #[test]
     fn parsing() {
-        parse!("42", "42:Number");
-        parse!("-42", "-42:Number");
-        parse!("Id", "Id:Identifier");
-        parse!("'hello world'", "hello world:String");
-        parse!("Id", "Id:Identifier");
-        parsefails!("+", "Expected value, found +.");
-        parsefails!("-d", "Expected value, found -.");
+        parse!("42.", "42:Number");
+        parse!("-42.0.", "-42:Number");
+        parse!("Id.", "Id:Identifier");
+        parse!("'hello world'.", "hello world:String");
         parsefails!("", "Unexpected end of input.");
-        parse!("One two", "(unary One:Identifier two:Identifier)");
+        parse!("One two.", "(unary One:Identifier two:Identifier)");
         parse!(
-            "One two three",
+            "One two three.",
             "(unary (unary One:Identifier two:Identifier) three:Identifier)"
         );
-        parse!("3.14159 cos", "(unary 3.14159:Number cos:Identifier)");
+        parse!("3.14159 cos.", "(unary 3.14159:Number cos:Identifier)");
         parse!(
-            "'hello world' len",
+            "'hello world' len.",
             "(unary hello world:String len:Identifier)"
         );
-        parse!("2 + 3", "(binary + 2:Number 3:Number)");
-        parse!("2 - -3", "(binary - 2:Number -3:Number)");
-        parse!("2 * 3", "(binary * 2:Number 3:Number)");
-        parse!("2 / 3", "(binary / 2:Number 3:Number)");
-        parse!("2 < 3", "(binary < 2:Number 3:Number)");
-        parse!("2 <= 3", "(binary <= 2:Number 3:Number)");
-        parse!("2 = 3", "(binary = 2:Number 3:Number)");
-        parse!("2 ~= 3", "(binary ~= 2:Number 3:Number)");
-        parse!("2 > 3", "(binary > 2:Number 3:Number)");
-        parse!("2 >= 3", "(binary >= 2:Number 3:Number)");
+        parse!("2 + 3.", "(binary + 2:Number 3:Number)");
+        parse!("2 - -3.", "(binary - 2:Number -3:Number)");
+        parse!("2 * 3.", "(binary * 2:Number 3:Number)");
+        parse!("2 / 3.", "(binary / 2:Number 3:Number)");
+        parse!("2 < 3.", "(binary < 2:Number 3:Number)");
+        parse!("2 <= 3.", "(binary <= 2:Number 3:Number)");
+        parse!("2 = 3.", "(binary = 2:Number 3:Number)");
+        parse!("2 ~= 3.", "(binary ~= 2:Number 3:Number)");
+        parse!("2 > 3.", "(binary > 2:Number 3:Number)");
+        parse!("2 >= 3.", "(binary >= 2:Number 3:Number)");
         parse!(
-            "4 sqrt * 3",
+            "4 sqrt * 3.",
             "(binary * (unary 4:Number sqrt:Identifier) 3:Number)"
         );
         parse!(
-            "2 + 4 sqrt * 3",
+            "2 + 4 sqrt * 3.",
             "(binary * (binary + 2:Number (unary 4:Number sqrt:Identifier)) 3:Number)"
         );
         parse!(
-            "2 * 3 * 4",
+            "2 * 3 * 4.",
             "(binary * (binary * 2:Number 3:Number) 4:Number)"
         );
         parse!(
-            "'hello ' concat: 'world'",
+            "'hello ' concat: 'world'.",
             "(keyword hello :String concat: world:String)"
         );
         parse!(
-            "a b:1 c: 2",
+            "a b:1 c: 2.",
             "(keyword a:Identifier b: 1:Number c: 2:Number)"
         );
         parse!(
-            "a mod: 81 sqrt",
+            "a mod: 81 sqrt.",
             "(keyword a:Identifier mod: (unary 81:Number sqrt:Identifier))"
         );
         // From Wikipedia example of Smalltalk message precedence
         parse!(
-            "3 factorial + 4 factorial between: 10 and: 100",
+            "3 factorial + 4 factorial between: 10 and: 100.",
             "(keyword (binary + (unary 3:Number factorial:Identifier) (unary 4:Number factorial:Identifier)) between: 10:Number and: 100:Number)"
         );
         parse!(
-            "(3 factorial + 4) factorial between: 10 and: 100",
+            "(3 factorial + 4) factorial between: 10 and: 100.",
             "(keyword (unary (binary + (unary 3:Number factorial:Identifier) 4:Number) factorial:Identifier) between: 10:Number and: 100:Number)"
         );
-        parse!("a b:-2", "(keyword a:Identifier b: -2:Number)");
+        parse!("a b:-2.", "(keyword a:Identifier b: -2:Number)");
         parse!(
-            "3 + (4 * 5)",
+            "3 + (4 * 5).",
             "(binary + 3:Number (binary * 4:Number 5:Number))"
         );
     }

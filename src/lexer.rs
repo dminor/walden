@@ -245,6 +245,8 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                 ' ' => {}
                 _ => {
                     let mut valid_identifier = true;
+                    let mut found_dot = false;
+                    let mut push_dot = false;
                     if c.is_numeric() {
                         valid_identifier = false;
                     }
@@ -258,10 +260,24 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                                 if c.is_alphanumeric() {
                                     v.push(*c);
                                     chars.next();
-                                } else if *c == '.' {
-                                    valid_identifier = false;
-                                    v.push(*c);
+                                } else if !found_dot && *c == '.' {
+                                    found_dot = true;
                                     chars.next();
+                                    match chars.peek() {
+                                        Some(c) => {
+                                            if c.is_numeric() {
+                                                valid_identifier = false;
+                                                v.push('.');
+                                            } else {
+                                                push_dot = true;
+                                                break;
+                                            }
+                                        }
+                                        None => {
+                                            push_dot = true;
+                                            break;
+                                        }
+                                    }
                                 } else {
                                     break;
                                 }
@@ -300,6 +316,9 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                                 }
                             }
                         },
+                    }
+                    if push_dot {
+                        push_token!(Token::Dot, tokens, line);
                     }
                 }
             },
@@ -427,8 +446,6 @@ mod tests {
 
         scan!("Valid", lexer::Token::Identifier("Valid".to_string()));
         scanfails!("2Valid", "Invalid identifier: 2Valid.", 1);
-
-        scanfails!("In.valid", "Invalid identifier: In.valid.", 1);
 
         scanfails!("In_valid", "Invalid identifier: _valid.", 1);
 

@@ -182,24 +182,24 @@ mod tests {
 
     #[test]
     fn evals() {
-        eval!("42", Number, 42.0);
-        eval!("1 + 2", Number, 3.0);
-        eval!("1 - 2", Number, -1.0);
-        eval!("1 - -2", Number, 3.0);
-        eval!("3 * -2", Number, -6.0);
-        eval!("1 / 2", Number, 0.5);
-        eval!("1 + 2 + 3", Number, 6.0);
-        eval!("true", Boolean, true);
-        eval!("false", Boolean, false);
-        eval!("1 <= 3", Boolean, true);
-        eval!("1 < 3 = true", Boolean, true);
-        eval!("1 < 3 ~= false", Boolean, true);
-        eval!("2 + 4 = 7 = false", Boolean, true);
-        eval!("'hello world'", String, "hello world");
-        eval!("true not", Boolean, false);
-        eval!("(3 < 2) not", Boolean, true);
-        eval!("(2 < 3) and: (1 < 3)", Boolean, true);
-        eval!("(3 < 2) and: (1 < 3)", Boolean, false);
-        eval!("(3 < 2) or: (1 < 3)", Boolean, true);
+        eval!("42.", Number, 42.0);
+        eval!("1 + 2.", Number, 3.0);
+        eval!("1 - 2.", Number, -1.0);
+        eval!("1 - -2.", Number, 3.0);
+        eval!("3 * -2.", Number, -6.0);
+        eval!("1 / 2.", Number, 0.5);
+        eval!("1 + 2 + 3.", Number, 6.0);
+        eval!("true.", Boolean, true);
+        eval!("false.", Boolean, false);
+        eval!("1 <= 3.", Boolean, true);
+        eval!("1 < 3 = true.", Boolean, true);
+        eval!("1 < 3 ~= false.", Boolean, true);
+        eval!("2 + 4 = 7 = false.", Boolean, true);
+        eval!("'hello world'.", String, "hello world");
+        eval!("true not.", Boolean, false);
+        eval!("(3 < 2) not.", Boolean, true);
+        eval!("(2 < 3) and: (1 < 3).", Boolean, true);
+        eval!("(3 < 2) and: (1 < 3).", Boolean, false);
+        eval!("(3 < 2) or: (1 < 3).", Boolean, true);
     }
 }
