@@ -18,41 +18,45 @@ impl fmt::Display for RuntimeError {
 
 impl Error for RuntimeError {}
 
-fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), RuntimeError> {
+fn generate(
+    ast: &parser::Ast,
+    vm: &mut vm::VirtualMachine,
+    instr: &mut Vec<vm::Opcode>,
+) -> Result<(), RuntimeError> {
     match ast {
         parser::Ast::Binary(op, lhs, rhs) => {
-            generate(lhs, vm)?;
-            generate(rhs, vm)?;
+            generate(lhs, vm, instr)?;
+            generate(rhs, vm, instr)?;
             match op.token {
                 lexer::Token::Plus => {
-                    vm.instructions.push(vm::Opcode::Add);
+                    instr.push(vm::Opcode::Add);
                 }
                 lexer::Token::Minus => {
-                    vm.instructions.push(vm::Opcode::Sub);
+                    instr.push(vm::Opcode::Sub);
                 }
                 lexer::Token::Star => {
-                    vm.instructions.push(vm::Opcode::Mul);
+                    instr.push(vm::Opcode::Mul);
                 }
                 lexer::Token::Slash => {
-                    vm.instructions.push(vm::Opcode::Div);
+                    instr.push(vm::Opcode::Div);
                 }
                 lexer::Token::Less => {
-                    vm.instructions.push(vm::Opcode::Less);
+                    instr.push(vm::Opcode::Less);
                 }
                 lexer::Token::LessEqual => {
-                    vm.instructions.push(vm::Opcode::LessEqual);
+                    instr.push(vm::Opcode::LessEqual);
                 }
                 lexer::Token::Equal => {
-                    vm.instructions.push(vm::Opcode::Equal);
+                    instr.push(vm::Opcode::Equal);
                 }
                 lexer::Token::NotEqual => {
-                    vm.instructions.push(vm::Opcode::NotEqual);
+                    instr.push(vm::Opcode::NotEqual);
                 }
                 lexer::Token::Greater => {
-                    vm.instructions.push(vm::Opcode::Greater);
+                    instr.push(vm::Opcode::Greater);
                 }
                 lexer::Token::GreaterEqual => {
-                    vm.instructions.push(vm::Opcode::GreaterEqual);
+                    instr.push(vm::Opcode::GreaterEqual);
                 }
                 _ => {
                     return Err(RuntimeError {
@@ -64,64 +68,67 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
         }
         parser::Ast::Block(_, _, statements) => {
             let mut count = 0;
+            let mut block_instr = Vec::new();
             for statement in statements {
-                generate(statement, vm)?;
+                generate(statement, vm, &mut block_instr)?;
                 count += 1;
                 if count != statements.len() {
-                    vm.instructions.push(vm::Opcode::Pop);
+                    block_instr.push(vm::Opcode::Pop);
                 }
             }
+            block_instr.push(vm::Opcode::Ret);
+            let ip = vm.instructions.len();
+            vm.instructions.extend(block_instr);
+            instr.push(vm::Opcode::Const(vm::Value::Block(vm.block.clone(), ip)));
         }
         parser::Ast::Keyword(obj, msg) => {
             let mut message_name = String::new();
             for kw in msg {
                 message_name.push_str(&kw.0.token.to_string());
                 message_name.push(':');
-                generate(&kw.1, vm)?;
+                generate(&kw.1, vm, instr)?;
             }
-            generate(obj, vm)?;
-            vm.instructions.push(vm::Opcode::Const(vm::Value::String(
+            generate(obj, vm, instr)?;
+            instr.push(vm::Opcode::Const(vm::Value::String(
                 vm.string.clone(),
                 message_name,
             )));
-            vm.instructions.push(vm::Opcode::Lookup);
-            vm.instructions.push(vm::Opcode::Call);
+            instr.push(vm::Opcode::Lookup);
+            instr.push(vm::Opcode::Call);
         }
         parser::Ast::Unary(obj, msg) => {
-            generate(obj, vm)?;
-            generate(msg, vm)?;
-            vm.instructions.push(vm::Opcode::Lookup);
-            vm.instructions.push(vm::Opcode::Call);
+            generate(obj, vm, instr)?;
+            generate(msg, vm, instr)?;
+            instr.push(vm::Opcode::Lookup);
+            instr.push(vm::Opcode::Call);
         }
         parser::Ast::Value(v) => match &v.token {
             lexer::Token::False => {
-                vm.instructions.push(vm::Opcode::Const(vm::Value::Boolean(
+                instr.push(vm::Opcode::Const(vm::Value::Boolean(
                     vm.boolean.clone(),
                     false,
                 )));
             }
             lexer::Token::Identifier(s) => {
-                vm.instructions.push(vm::Opcode::Const(vm::Value::String(
+                instr.push(vm::Opcode::Const(vm::Value::String(
                     vm.string.clone(),
                     s.to_string(),
                 )));
             }
             lexer::Token::Nil => {
-                vm.instructions
-                    .push(vm::Opcode::Const(vm::Value::Nil(vm.nil.clone())));
+                instr.push(vm::Opcode::Const(vm::Value::Nil(vm.nil.clone())));
             }
             lexer::Token::Number(n) => {
-                vm.instructions
-                    .push(vm::Opcode::Const(vm::Value::Number(vm.number.clone(), *n)));
+                instr.push(vm::Opcode::Const(vm::Value::Number(vm.number.clone(), *n)));
             }
             lexer::Token::String(s) => {
-                vm.instructions.push(vm::Opcode::Const(vm::Value::String(
+                instr.push(vm::Opcode::Const(vm::Value::String(
                     vm.string.clone(),
                     s.to_string(),
                 )));
             }
             lexer::Token::True => {
-                vm.instructions.push(vm::Opcode::Const(vm::Value::Boolean(
+                instr.push(vm::Opcode::Const(vm::Value::Boolean(
                     vm.boolean.clone(),
                     true,
                 )));
@@ -139,7 +146,10 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine) -> Result<(), Runtim
 
 pub fn eval(ast: &parser::Ast, show_instr: bool) -> Result<vm::Value, RuntimeError> {
     let mut vm = vm::VirtualMachine::new();
-    generate(ast, &mut vm)?;
+    let mut instr = Vec::new();
+    generate(ast, &mut vm, &mut instr)?;
+    vm.ip = vm.instructions.len();
+    vm.instructions.extend(instr);
 
     if show_instr {
         for instr in &vm.instructions {
@@ -181,11 +191,11 @@ mod tests {
                         Ok(vm::Value::$type(_, v)) => {
                             assert_eq!(v, $value);
                         }
-                        _ => assert!(false),
+                        _ => assert_eq!("eval failed", ""),
                     },
-                    _ => assert!(false),
+                    _ => assert_eq!("parse failed", ""),
                 },
-                _ => assert!(false),
+                _ => assert_eq!("scan failed", ""),
             }
         }};
     }
@@ -211,6 +221,7 @@ mod tests {
         eval!("(2 < 3) and: (1 < 3).", Boolean, true);
         eval!("(3 < 2) and: (1 < 3).", Boolean, false);
         eval!("(3 < 2) or: (1 < 3).", Boolean, true);
-        eval!("[1. 2. 3.].", Number, 3.0);
+        eval!("[1. 2. 3.].", Block, 0);
+        eval!("[1. [2. 3.]. ].", Block, 4);
     }
 }

@@ -34,6 +34,7 @@ impl Object {
         } else {
             match self.members.get(&member) {
                 Some(v) => match v {
+                    Value::Block(proto, address) => Some(Value::Block(proto.clone(), *address)),
                     Value::Boolean(proto, b) => Some(Value::Boolean(proto.clone(), *b)),
                     Value::Nil(proto) => Some(Value::Nil(proto.clone())),
                     Value::Number(proto, n) => Some(Value::Number(proto.clone(), *n)),
@@ -62,6 +63,7 @@ impl Object {
 }
 
 pub enum Value {
+    Block(Rc<Object>, usize),
     Boolean(Rc<Object>, bool),
     Nil(Rc<Object>),
     Number(Rc<Object>, f64),
@@ -73,6 +75,7 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Value::Block(_, u) => write!(f, "(lambda @{})", u),
             Value::Boolean(_, b) => write!(f, "{}", b),
             Value::Nil(_) => write!(f, "nil"),
             Value::Number(_, n) => write!(f, "{}", n),
@@ -98,6 +101,7 @@ pub enum Opcode {
     Call,
     Lookup,
     Pop,
+    Ret,
 }
 
 impl fmt::Display for Opcode {
@@ -117,18 +121,21 @@ impl fmt::Display for Opcode {
             Opcode::Call => write!(f, "call"),
             Opcode::Lookup => write!(f, "lookup"),
             Opcode::Pop => write!(f, "pop"),
+            Opcode::Ret => write!(f, "ret"),
         }
     }
 }
 
 #[derive(Default)]
 pub struct VirtualMachine {
-    pub stack: Vec<Value>,
+    pub callstack: Vec<(usize, usize)>,
     pub instructions: Vec<Opcode>,
     pub ip: usize,
+    pub stack: Vec<Value>,
 
     // Prototypes for builtin objects
     pub object: Rc<Object>,
+    pub block: Rc<Object>,
     pub boolean: Rc<Object>,
     pub nil: Rc<Object>,
     pub number: Rc<Object>,
@@ -357,11 +364,13 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self) -> Result<(), VMError> {
-        self.ip = 0;
         while self.ip < self.instructions.len() {
             match &self.instructions[self.ip] {
                 Opcode::Add => apply_op!(self, Number, Number, self.number.clone(), +, Add),
                 Opcode::Const(obj) => match obj {
+                    Value::Block(proto, ip) => {
+                        self.stack.push(Value::Block(proto.clone(), *ip));
+                    }
                     Value::Boolean(proto, b) => {
                         self.stack.push(Value::Boolean(proto.clone(), *b));
                     }
@@ -389,6 +398,7 @@ impl VirtualMachine {
                     apply_op!(self, Number, Boolean, self.boolean.clone(), <=, LessEqual)
                 }
                 Opcode::Equal => match self.stack.last() {
+                    Some(Value::Block(_, _)) => apply_eq!(self, Boolean),
                     Some(Value::Boolean(_, _)) => apply_eq!(self, Boolean),
                     Some(Value::Number(_, _)) => apply_eq!(self, Number),
                     Some(Value::Object(_)) => match self.stack.pop() {
@@ -468,6 +478,7 @@ impl VirtualMachine {
                     }
                 },
                 Opcode::NotEqual => match self.stack.last() {
+                    Some(Value::Block(_, _)) => apply_neq!(self, Boolean),
                     Some(Value::Boolean(_, _)) => apply_neq!(self, Boolean),
                     Some(Value::Number(_, _)) => apply_neq!(self, Number),
                     Some(Value::Object(_)) => match self.stack.pop() {
@@ -572,7 +583,8 @@ impl VirtualMachine {
                 },
                 Opcode::Lookup => match self.stack.pop() {
                     Some(Value::String(_, s)) => match self.stack.last() {
-                        Some(Value::Boolean(proto, _))
+                        Some(Value::Block(proto, _))
+                        | Some(Value::Boolean(proto, _))
                         | Some(Value::Nil(proto))
                         | Some(Value::Number(proto, _))
                         | Some(Value::String(proto, _)) => {
@@ -639,6 +651,18 @@ impl VirtualMachine {
                     }
                     _ => {}
                 },
+                Opcode::Ret => match self.callstack.pop() {
+                    Some((sp, ip)) => {
+                        self.ip = ip;
+                        self.stack.drain(sp..);
+                    }
+                    None => {
+                        return Err(VMError {
+                            err: "Call stack underflow.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                },
             }
             self.ip += 1;
         }
@@ -649,10 +673,12 @@ impl VirtualMachine {
         let object = Rc::new(Object::new());
 
         let mut vm = VirtualMachine {
-            stack: Vec::new(),
+            callstack: Vec::new(),
             instructions: Vec::new(),
             ip: 0,
+            stack: Vec::new(),
             object: object.clone(),
+            block: Rc::new(Object::new_with_prototype(object.clone())),
             boolean: Rc::new(Object::new_with_prototype(object.clone())),
             nil: Rc::new(Object::new_with_prototype(object.clone())),
             number: Rc::new(Object::new_with_prototype(object.clone())),
