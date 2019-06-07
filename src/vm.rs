@@ -567,12 +567,21 @@ impl VirtualMachine {
                     apply_op!(self, Number, Boolean, self.boolean.clone(), >=, GreaterEqual)
                 }
                 Opcode::Call => match self.stack.pop() {
-                    Some(Value::RustBlock(lambda)) => match lambda(self) {
-                        Ok(()) => {}
-                        Err(err) => {
-                            return Err(err);
+                    Some(Value::RustBlock(lambda)) => {
+                        let ip = self.ip;
+                        match lambda(self) {
+                            Ok(()) => {
+                                // skip incrementing ip if the block
+                                // manipulated it
+                                if ip != self.ip {
+                                    continue;
+                                }
+                            }
+                            Err(err) => {
+                                return Err(err);
+                            }
                         }
-                    },
+                    }
                     Some(Value::Nil(_)) => {
                         return Err(VMError {
                             err: "Message not understood.".to_string(),
@@ -654,7 +663,8 @@ impl VirtualMachine {
                 Opcode::Ret => match self.callstack.pop() {
                     Some((sp, ip)) => {
                         self.ip = ip;
-                        self.stack.drain(sp..);
+                        self.stack.drain(sp + 1..);
+                        continue; // skip incrementing ip
                     }
                     None => {
                         return Err(VMError {

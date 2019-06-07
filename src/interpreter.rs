@@ -144,18 +144,12 @@ fn generate(
     Ok(())
 }
 
-pub fn eval(ast: &parser::Ast, show_instr: bool) -> Result<vm::Value, RuntimeError> {
+pub fn eval(ast: &parser::Ast) -> Result<vm::Value, RuntimeError> {
     let mut vm = vm::VirtualMachine::new();
     let mut instr = Vec::new();
     generate(ast, &mut vm, &mut instr)?;
     vm.ip = vm.instructions.len();
     vm.instructions.extend(instr);
-
-    if show_instr {
-        for instr in &vm.instructions {
-            println!("    {}", instr);
-        }
-    }
 
     match vm.run() {
         Ok(()) => match vm.stack.pop() {
@@ -187,7 +181,7 @@ mod tests {
         ($input:expr, $type:ident, $value:expr) => {{
             match lexer::scan($input) {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
-                    Ok(ast) => match interpreter::eval(&ast, false) {
+                    Ok(ast) => match interpreter::eval(&ast) {
                         Ok(vm::Value::$type(_, v)) => {
                             assert_eq!(v, $value);
                         }
@@ -223,5 +217,6 @@ mod tests {
         eval!("(3 < 2) or: (1 < 3).", Boolean, true);
         eval!("[1. 2. 3.].", Block, 0);
         eval!("[1. [2. 3.]. ].", Block, 4);
+        eval!("[1. [2. 3.] value. ] value.", Number, 3.0);
     }
 }
