@@ -74,6 +74,116 @@ fn boolean_and(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     }
 }
 
+// Interestingly, Smalltalk generates branch opcodes and inlines
+// ifFalse:, ifTrue:ifFalse: and ifTrue: which means you can not
+// define methods with these names for non-booleans.
+fn boolean_iffalse(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
+            Some(vm::Value::Block(_, ip)) => {
+                if !a {
+                    vm.callstack.push((vm.stack.len(), vm.ip + 1));
+                    vm.ip = ip;
+                } else {
+                    vm.stack.push(vm::Value::Nil(vm.object.clone()));
+                }
+                Ok(())
+            }
+            None => Err(vm::VMError {
+                err: "Stack underflow.".to_string(),
+                line: usize::max_value(),
+            }),
+            _ => Err(vm::VMError {
+                err: "ifFalse: expects block.".to_string(),
+                line: usize::max_value(),
+            }),
+        },
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+        _ => Err(vm::VMError {
+            err: "Message not understood.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
+
+fn boolean_iftrue(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
+            Some(vm::Value::Block(_, ip)) => {
+                if a {
+                    vm.callstack.push((vm.stack.len(), vm.ip + 1));
+                    vm.ip = ip;
+                } else {
+                    vm.stack.push(vm::Value::Nil(vm.object.clone()));
+                }
+                Ok(())
+            }
+            None => Err(vm::VMError {
+                err: "Stack underflow.".to_string(),
+                line: usize::max_value(),
+            }),
+            _ => Err(vm::VMError {
+                err: "ifTrue: expects block.".to_string(),
+                line: usize::max_value(),
+            }),
+        },
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+        _ => Err(vm::VMError {
+            err: "Message not understood.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
+
+fn boolean_iftrue_iffalse(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
+            Some(vm::Value::Block(_, false_ip)) => match vm.stack.pop() {
+                Some(vm::Value::Block(_, true_ip)) => {
+                    if a {
+                        vm.callstack.push((vm.stack.len(), vm.ip + 1));
+                        vm.ip = true_ip;
+                    } else {
+                        vm.callstack.push((vm.stack.len(), vm.ip + 1));
+                        vm.ip = false_ip;
+                    }
+                    Ok(())
+                }
+                None => Err(vm::VMError {
+                    err: "Stack underflow.".to_string(),
+                    line: usize::max_value(),
+                }),
+                _ => Err(vm::VMError {
+                    err: "ifTrue: expects block.".to_string(),
+                    line: usize::max_value(),
+                }),
+            },
+            None => Err(vm::VMError {
+                err: "Stack underflow.".to_string(),
+                line: usize::max_value(),
+            }),
+            _ => Err(vm::VMError {
+                err: "ifFalse: expects block.".to_string(),
+                line: usize::max_value(),
+            }),
+        },
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+        _ => Err(vm::VMError {
+            err: "Message not understood.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
+
 fn boolean_not(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(vm::Value::Boolean(proto, b)) => {
@@ -135,6 +245,16 @@ pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
         Some(obj) => {
             obj.members
                 .insert("and:".to_string(), vm::Value::RustBlock(boolean_and));
+            obj.members.insert(
+                "ifFalse:".to_string(),
+                vm::Value::RustBlock(boolean_iffalse),
+            );
+            obj.members.insert(
+                "ifTrue:ifFalse:".to_string(),
+                vm::Value::RustBlock(boolean_iftrue_iffalse),
+            );
+            obj.members
+                .insert("ifTrue:".to_string(), vm::Value::RustBlock(boolean_iftrue));
             obj.members
                 .insert("not".to_string(), vm::Value::RustBlock(boolean_not));
             obj.members

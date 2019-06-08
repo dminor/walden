@@ -178,6 +178,18 @@ mod tests {
     use crate::vm;
 
     macro_rules! eval {
+        ($input:expr, $type:ident) => {{
+            match lexer::scan($input) {
+                Ok(mut tokens) => match parser::parse(&mut tokens) {
+                    Ok(ast) => match interpreter::eval(&ast) {
+                        Ok(vm::Value::$type(_)) => {}
+                        _ => assert_eq!("eval failed", ""),
+                    },
+                    _ => assert_eq!("parse failed", ""),
+                },
+                _ => assert_eq!("scan failed", ""),
+            }
+        }};
         ($input:expr, $type:ident, $value:expr) => {{
             match lexer::scan($input) {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
@@ -218,5 +230,10 @@ mod tests {
         eval!("[1. 2. 3.].", Block, 0);
         eval!("[1. [2. 3.]. ].", Block, 4);
         eval!("[1. [2. 3.] value. ] value.", Number, 3.0);
+        eval!("true ifTrue: [1.].", Number, 1.0);
+        eval!("false ifTrue: [1.].", Nil);
+        eval!("false ifFalse: [1.].", Number, 1.0);
+        eval!("true ifFalse: [1.].", Nil);
+        eval!("false ifTrue: [1.] ifFalse: [2.].", Number, 2.0);
     }
 }
