@@ -24,6 +24,9 @@ fn generate(
     instr: &mut Vec<vm::Opcode>,
 ) -> Result<(), RuntimeError> {
     match ast {
+        parser::Ast::Assignment(_, expr) => {
+            generate(expr, vm, instr)?;
+        }
         parser::Ast::Binary(op, lhs, rhs) => {
             generate(lhs, vm, instr)?;
             generate(rhs, vm, instr)?;
@@ -95,6 +98,9 @@ fn generate(
             )));
             instr.push(vm::Opcode::Lookup);
             instr.push(vm::Opcode::Call);
+        }
+        parser::Ast::Lookup(_) => {
+            instr.push(vm::Opcode::Const(vm::Value::Nil(vm.nil.clone())));
         }
         parser::Ast::Unary(obj, msg) => {
             generate(obj, vm, instr)?;
@@ -270,5 +276,7 @@ mod tests {
               42 test.] value.",
             "Attempt to call non-lambda value."
         );
+        eval!("a := 42.", Number, 42.0);
+        eval!("test.", Nil);
     }
 }
