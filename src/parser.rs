@@ -23,7 +23,7 @@ pub enum Ast {
     Block(Vec<lexer::LexedToken>, Vec<lexer::LexedToken>, Vec<Ast>),
     Keyword(Box<Ast>, Vec<(lexer::LexedToken, Ast)>),
     Lookup(lexer::LexedToken),
-    Unary(Box<Ast>, Box<Ast>),
+    Unary(Box<Ast>, lexer::LexedToken),
     Value(lexer::LexedToken),
 }
 
@@ -45,11 +45,11 @@ impl fmt::Display for Ast {
             Ast::Keyword(obj, msg) => {
                 write!(f, "(keyword {}", obj)?;
                 for kw in msg {
-                    write!(f, " {}: {}", kw.0.token, kw.1)?;
+                    write!(f, " {}:Identifier {}", kw.0.token, kw.1)?;
                 }
                 write!(f, ")")
             }
-            Ast::Unary(obj, msg) => write!(f, "(unary {} {})", *obj, *msg),
+            Ast::Unary(obj, msg) => write!(f, "(unary {} {}:Identifier)", *obj, msg.token),
             Ast::Value(t) => match &t.token {
                 lexer::Token::Identifier(_) => write!(f, "{}:Identifier", t.token),
                 lexer::Token::Number(_) => write!(f, "{}:Number", t.token),
@@ -257,12 +257,12 @@ fn unary(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                             None => {}
                         }
                         match peek.token {
-                            lexer::Token::Identifier(_) => match value(tokens) {
-                                Ok(msg) => {
-                                    result = Ast::Unary(Box::new(result), Box::new(msg));
+                            lexer::Token::Identifier(_) => match tokens.pop_front() {
+                                Some(token) => {
+                                    result = Ast::Unary(Box::new(result), token);
                                 }
-                                Err(e) => {
-                                    return Err(e);
+                                None => {
+                                    unreachable!();
                                 }
                             },
                             _ => {
@@ -444,7 +444,7 @@ mod tests {
         );
         parse!(
             "'hello ' concat: 'world'.",
-            "(keyword hello :String concat: world:String)"
+            "(keyword hello :String concat:Identifier world:String)"
         );
         parse!(
             "a b:1 c: 2.",
@@ -457,11 +457,11 @@ mod tests {
         // From Wikipedia example of Smalltalk message precedence
         parse!(
             "3 factorial + 4 factorial between: 10 and: 100.",
-            "(keyword (binary + (unary 3:Number factorial:Identifier) (unary 4:Number factorial:Identifier)) between: 10:Number and: 100:Number)"
+            "(keyword (binary + (unary 3:Number factorial:Identifier) (unary 4:Number factorial:Identifier)) between:Identifier 10:Number and:Identifier 100:Number)"
         );
         parse!(
             "(3 factorial + 4) factorial between: 10 and: 100.",
-            "(keyword (unary (binary + (unary 3:Number factorial:Identifier) 4:Number) factorial:Identifier) between: 10:Number and: 100:Number)"
+            "(keyword (unary (binary + (unary 3:Number factorial:Identifier) 4:Number) factorial:Identifier) between:Identifier 10:Number and:Identifier 100:Number)"
         );
         parse!(
             "a b:-2.",

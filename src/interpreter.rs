@@ -104,7 +104,10 @@ fn generate(
         }
         parser::Ast::Unary(obj, msg) => {
             generate(obj, vm, instr)?;
-            generate(msg, vm, instr)?;
+            instr.push(vm::Opcode::Const(vm::Value::String(
+                vm.string.clone(),
+                msg.token.to_string(),
+            )));
             instr.push(vm::Opcode::Lookup);
             instr.push(vm::Opcode::Call);
         }
