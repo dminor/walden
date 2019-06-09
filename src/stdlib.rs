@@ -1,5 +1,4 @@
 use crate::vm;
-use std::rc::Rc;
 
 fn block_disassemble(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
@@ -228,38 +227,110 @@ fn boolean_or(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     }
 }
 
-pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
-    match Rc::get_mut(&mut vm.block) {
-        Some(obj) => {
-            obj.members.insert(
-                "disassemble".to_string(),
-                vm::Value::RustBlock(block_disassemble),
-            );
-            obj.members
-                .insert("value".to_string(), vm::Value::RustBlock(block_value));
-        }
-        None => {}
-    };
+fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(value) => match value {
+            vm::Value::Block(proto, _)
+            | vm::Value::Boolean(proto, _)
+            | vm::Value::Nil(proto)
+            | vm::Value::Number(proto, _)
+            | vm::Value::String(proto, _) => {
+                vm.stack.push(vm::Value::Object(proto.clone()));
+                Ok(())
+            }
+            vm::Value::Object(obj) => {
+                let result;
+                match &obj.borrow().prototype {
+                    Some(proto) => result = vm::Value::Object(proto.clone()),
+                    None => result = vm::Value::Nil(vm.object.clone()),
+                }
+                vm.stack.push(result);
+                Ok(())
+            }
+            vm::Value::RustBlock(_) => unreachable!(),
+        },
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
 
-    match Rc::get_mut(&mut vm.boolean) {
-        Some(obj) => {
-            obj.members
-                .insert("and:".to_string(), vm::Value::RustBlock(boolean_and));
-            obj.members.insert(
-                "ifFalse:".to_string(),
-                vm::Value::RustBlock(boolean_iffalse),
-            );
-            obj.members.insert(
-                "ifTrue:ifFalse:".to_string(),
-                vm::Value::RustBlock(boolean_iftrue_iffalse),
-            );
-            obj.members
-                .insert("ifTrue:".to_string(), vm::Value::RustBlock(boolean_iftrue));
-            obj.members
-                .insert("not".to_string(), vm::Value::RustBlock(boolean_not));
-            obj.members
-                .insert("or:".to_string(), vm::Value::RustBlock(boolean_or));
-        }
-        None => {}
-    };
+fn object_set_with(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Object(obj)) => match vm.stack.pop() {
+            Some(value) => match vm.stack.pop() {
+                Some(vm::Value::String(_, s)) => {
+                    obj.borrow_mut().members.insert(s.to_string(), value);
+                    vm.stack.push(vm::Value::Object(obj.clone()));
+                    Ok(())
+                }
+                None => Err(vm::VMError {
+                    err: "Stack underflow.".to_string(),
+                    line: usize::max_value(),
+                }),
+                _ => Err(vm::VMError {
+                    err: "set: expects string.".to_string(),
+                    line: usize::max_value(),
+                }),
+            },
+            None => Err(vm::VMError {
+                err: "Stack underflow.".to_string(),
+                line: usize::max_value(),
+            }),
+        },
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+        _ => Err(vm::VMError {
+            err: "Message not understood.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
+
+pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
+    vm.object.borrow_mut().members.insert(
+        "prototype".to_string(),
+        vm::Value::RustBlock(object_prototype),
+    );
+    vm.object.borrow_mut().members.insert(
+        "set:with:".to_string(),
+        vm::Value::RustBlock(object_set_with),
+    );
+
+    vm.block.borrow_mut().members.insert(
+        "disassemble".to_string(),
+        vm::Value::RustBlock(block_disassemble),
+    );
+    vm.block
+        .borrow_mut()
+        .members
+        .insert("value".to_string(), vm::Value::RustBlock(block_value));
+
+    vm.boolean
+        .borrow_mut()
+        .members
+        .insert("and:".to_string(), vm::Value::RustBlock(boolean_and));
+    vm.boolean.borrow_mut().members.insert(
+        "ifFalse:".to_string(),
+        vm::Value::RustBlock(boolean_iffalse),
+    );
+    vm.boolean.borrow_mut().members.insert(
+        "ifTrue:ifFalse:".to_string(),
+        vm::Value::RustBlock(boolean_iftrue_iffalse),
+    );
+    vm.boolean
+        .borrow_mut()
+        .members
+        .insert("ifTrue:".to_string(), vm::Value::RustBlock(boolean_iftrue));
+    vm.boolean
+        .borrow_mut()
+        .members
+        .insert("not".to_string(), vm::Value::RustBlock(boolean_not));
+    vm.boolean
+        .borrow_mut()
+        .members
+        .insert("or:".to_string(), vm::Value::RustBlock(boolean_or));
 }

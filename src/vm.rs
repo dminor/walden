@@ -1,4 +1,5 @@
 use crate::stdlib;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -20,30 +21,26 @@ impl Error for VMError {}
 
 #[derive(Default)]
 pub struct Object {
-    prototype: Option<Rc<Object>>,
+    pub prototype: Option<Rc<RefCell<Object>>>,
     pub members: HashMap<String, Value>,
 }
 
 impl Object {
     pub fn lookup(&self, member: String) -> Option<Value> {
-        if member == "prototype" {
-            match &self.prototype {
-                Some(proto) => Some(Value::Object(proto.clone())),
+        match self.members.get(&member) {
+            Some(v) => match v {
+                Value::Block(proto, address) => Some(Value::Block(proto.clone(), *address)),
+                Value::Boolean(proto, b) => Some(Value::Boolean(proto.clone(), *b)),
+                Value::Nil(proto) => Some(Value::Nil(proto.clone())),
+                Value::Number(proto, n) => Some(Value::Number(proto.clone(), *n)),
+                Value::Object(obj) => Some(Value::Object(obj.clone())),
+                Value::RustBlock(f) => Some(Value::RustBlock(*f)),
+                Value::String(proto, s) => Some(Value::String(proto.clone(), s.to_string())),
+            },
+            None => match &self.prototype {
+                Some(proto) => proto.borrow().lookup(member),
                 None => None,
-            }
-        } else {
-            match self.members.get(&member) {
-                Some(v) => match v {
-                    Value::Block(proto, address) => Some(Value::Block(proto.clone(), *address)),
-                    Value::Boolean(proto, b) => Some(Value::Boolean(proto.clone(), *b)),
-                    Value::Nil(proto) => Some(Value::Nil(proto.clone())),
-                    Value::Number(proto, n) => Some(Value::Number(proto.clone(), *n)),
-                    Value::Object(obj) => Some(Value::Object(obj.clone())),
-                    Value::RustBlock(f) => Some(Value::RustBlock(*f)),
-                    Value::String(proto, s) => Some(Value::String(proto.clone(), s.to_string())),
-                },
-                None => None,
-            }
+            },
         }
     }
 
@@ -54,22 +51,22 @@ impl Object {
         }
     }
 
-    pub fn new_with_prototype(proto: Rc<Object>) -> Object {
+    pub fn new_with_prototype(proto: Rc<RefCell<Object>>) -> Object {
         Object {
-            prototype: Some(proto),
+            prototype: Some(proto.clone()),
             members: HashMap::new(),
         }
     }
 }
 
 pub enum Value {
-    Block(Rc<Object>, usize),
-    Boolean(Rc<Object>, bool),
-    Nil(Rc<Object>),
-    Number(Rc<Object>, f64),
-    Object(Rc<Object>),
+    Block(Rc<RefCell<Object>>, usize),
+    Boolean(Rc<RefCell<Object>>, bool),
+    Nil(Rc<RefCell<Object>>),
+    Number(Rc<RefCell<Object>>, f64),
+    Object(Rc<RefCell<Object>>),
     RustBlock(fn(&mut VirtualMachine) -> Result<(), VMError>),
-    String(Rc<Object>, String),
+    String(Rc<RefCell<Object>>, String),
 }
 
 impl fmt::Display for Value {
@@ -134,12 +131,12 @@ pub struct VirtualMachine {
     pub stack: Vec<Value>,
 
     // Prototypes for builtin objects
-    pub object: Rc<Object>,
-    pub block: Rc<Object>,
-    pub boolean: Rc<Object>,
-    pub nil: Rc<Object>,
-    pub number: Rc<Object>,
-    pub string: Rc<Object>,
+    pub object: Rc<RefCell<Object>>,
+    pub block: Rc<RefCell<Object>>,
+    pub boolean: Rc<RefCell<Object>>,
+    pub nil: Rc<RefCell<Object>>,
+    pub number: Rc<RefCell<Object>>,
+    pub string: Rc<RefCell<Object>>,
 }
 
 macro_rules! apply_op {
@@ -567,6 +564,11 @@ impl VirtualMachine {
                     apply_op!(self, Number, Boolean, self.boolean.clone(), >=, GreaterEqual)
                 }
                 Opcode::Call => match self.stack.pop() {
+                    Some(Value::Block(_, ip)) => {
+                        self.callstack.push((self.stack.len() - 1, self.ip + 1));
+                        self.ip = ip;
+                        continue;
+                    }
                     Some(Value::RustBlock(lambda)) => {
                         let ip = self.ip;
                         match lambda(self) {
@@ -588,7 +590,12 @@ impl VirtualMachine {
                             line: usize::max_value(),
                         });
                     }
-                    _ => {}
+                    _ => {
+                        return Err(VMError {
+                            err: "Attempt to call non-lambda value.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
                 },
                 Opcode::Lookup => match self.stack.pop() {
                     Some(Value::String(_, s)) => match self.stack.last() {
@@ -597,33 +604,28 @@ impl VirtualMachine {
                         | Some(Value::Nil(proto))
                         | Some(Value::Number(proto, _))
                         | Some(Value::String(proto, _)) => {
-                            if s == "prototype" {
-                                self.stack.push(Value::Object(proto.clone()));
-                                // skip call opcode in this case
-                                self.ip += 1;
-                            } else {
-                                match proto.lookup(s) {
-                                    Some(v) => {
-                                        self.stack.push(v);
-                                    }
-                                    None => {
-                                        self.stack.push(Value::Nil(self.nil.clone()));
-                                    }
-                                }
-                            }
-                        }
-                        Some(Value::Object(obj)) => {
-                            if s == "prototype" {
-                                self.ip += 1;
-                            }
-                            match obj.lookup(s) {
+                            let result;
+                            match proto.borrow().lookup(s) {
                                 Some(v) => {
-                                    self.stack.push(v);
+                                    result = v;
                                 }
                                 None => {
-                                    self.stack.push(Value::Nil(self.nil.clone()));
+                                    result = Value::Nil(self.nil.clone());
                                 }
                             }
+                            self.stack.push(result);
+                        }
+                        Some(Value::Object(obj)) => {
+                            let result;
+                            match obj.borrow().lookup(s) {
+                                Some(v) => {
+                                    result = v;
+                                }
+                                None => {
+                                    result = Value::Nil(self.nil.clone());
+                                }
+                            }
+                            self.stack.push(result);
                         }
                         Some(Value::RustBlock(_)) => {
                             return Err(VMError {
@@ -663,7 +665,7 @@ impl VirtualMachine {
                 Opcode::Ret => match self.callstack.pop() {
                     Some((sp, ip)) => {
                         self.ip = ip;
-                        self.stack.drain(sp + 1..);
+                        self.stack.drain(sp..self.stack.len() - 1);
                         continue; // skip incrementing ip
                     }
                     None => {
@@ -680,7 +682,7 @@ impl VirtualMachine {
     }
 
     pub fn new() -> VirtualMachine {
-        let object = Rc::new(Object::new());
+        let object = Rc::new(RefCell::new(Object::new()));
 
         let mut vm = VirtualMachine {
             callstack: Vec::new(),
@@ -688,11 +690,11 @@ impl VirtualMachine {
             ip: 0,
             stack: Vec::new(),
             object: object.clone(),
-            block: Rc::new(Object::new_with_prototype(object.clone())),
-            boolean: Rc::new(Object::new_with_prototype(object.clone())),
-            nil: Rc::new(Object::new_with_prototype(object.clone())),
-            number: Rc::new(Object::new_with_prototype(object.clone())),
-            string: Rc::new(Object::new_with_prototype(object.clone())),
+            block: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
+            boolean: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
+            nil: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
+            number: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
+            string: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
         };
 
         stdlib::create_standard_objects(&mut vm);
@@ -1086,7 +1088,7 @@ mod tests {
         ) {
             Ok(()) => match vm.run() {
                 Ok(()) => {
-                    assert_eq!(vm.stack.len(), 2);
+                    assert_eq!(vm.stack.len(), 1);
                     assert_eq!(vm.ip, 4);
                     match vm.stack.pop() {
                         Some(vm::Value::Object(obj)) => {
@@ -1120,7 +1122,7 @@ mod tests {
         ) {
             Ok(()) => match vm.run() {
                 Ok(()) => {
-                    assert_eq!(vm.stack.len(), 3);
+                    assert_eq!(vm.stack.len(), 1);
                     assert_eq!(vm.ip, 7);
                     match vm.stack.pop() {
                         Some(vm::Value::Object(obj)) => {

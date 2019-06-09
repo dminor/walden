@@ -144,10 +144,9 @@ fn generate(
     Ok(())
 }
 
-pub fn eval(ast: &parser::Ast) -> Result<vm::Value, RuntimeError> {
-    let mut vm = vm::VirtualMachine::new();
+pub fn eval(vm: &mut vm::VirtualMachine, ast: &parser::Ast) -> Result<vm::Value, RuntimeError> {
     let mut instr = Vec::new();
-    generate(ast, &mut vm, &mut instr)?;
+    generate(ast, vm, &mut instr)?;
     vm.ip = vm.instructions.len();
     vm.instructions.extend(instr);
 
@@ -179,29 +178,51 @@ mod tests {
 
     macro_rules! eval {
         ($input:expr, $type:ident) => {{
+            let mut vm = vm::VirtualMachine::new();
             match lexer::scan($input) {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
-                    Ok(ast) => match interpreter::eval(&ast) {
+                    Ok(ast) => match interpreter::eval(&mut vm, &ast) {
                         Ok(vm::Value::$type(_)) => {}
-                        _ => assert_eq!("eval failed", ""),
+                        Err(e) => assert_eq!("Eval failed.", e.err),
+                        _ => assert_eq!("Incorrect type.", ""),
                     },
-                    _ => assert_eq!("parse failed", ""),
+                    _ => assert_eq!("Parse failed.", ""),
                 },
-                _ => assert_eq!("scan failed", ""),
+                _ => assert_eq!("Scan failed.", ""),
             }
         }};
         ($input:expr, $type:ident, $value:expr) => {{
+            let mut vm = vm::VirtualMachine::new();
             match lexer::scan($input) {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
-                    Ok(ast) => match interpreter::eval(&ast) {
+                    Ok(ast) => match interpreter::eval(&mut vm, &ast) {
                         Ok(vm::Value::$type(_, v)) => {
                             assert_eq!(v, $value);
                         }
-                        _ => assert_eq!("eval failed", ""),
+                        Err(e) => assert_eq!("Eval failed.", e.err),
+                        _ => assert_eq!("Incorrect type.", ""),
                     },
-                    _ => assert_eq!("parse failed", ""),
+                    _ => assert_eq!("Parse failed.", ""),
                 },
-                _ => assert_eq!("scan failed", ""),
+                _ => assert_eq!("Scan failed.", ""),
+            }
+        }};
+    }
+
+    macro_rules! evalfails {
+        ($input:expr, $err:tt) => {{
+            let mut vm = vm::VirtualMachine::new();
+            match lexer::scan($input) {
+                Ok(mut tokens) => match parser::parse(&mut tokens) {
+                    Ok(ast) => match interpreter::eval(&mut vm, &ast) {
+                        Err(e) => {
+                            assert_eq!(e.err, $err);
+                        }
+                        _ => assert_eq!("Unexpected success.", ""),
+                    },
+                    _ => assert_eq!("Parse failed.", ""),
+                },
+                _ => assert_eq!("Scan failed.", ""),
             }
         }};
     }
@@ -235,5 +256,19 @@ mod tests {
         eval!("false ifFalse: [1.].", Number, 1.0);
         eval!("true ifFalse: [1.].", Nil);
         eval!("false ifTrue: [1.] ifFalse: [2.].", Number, 2.0);
+        eval!("true ifTrue: [1.] ifFalse: [2.].", Number, 1.0);
+        eval!("[42.] value.", Number, 42.0);
+        eval!(
+            "[42 prototype set: 'test' with: [true.].
+              42 test.] value.",
+            Boolean,
+            true
+        );
+        evalfails!("42 test.", "Message not understood.");
+        evalfails!(
+            "[42 prototype set: 'test' with: true.
+              42 test.] value.",
+            "Attempt to call non-lambda value."
+        );
     }
 }
