@@ -132,7 +132,6 @@ pub struct VirtualMachine {
 
     // Prototypes for builtin objects
     pub object: Rc<RefCell<Object>>,
-    pub block: Rc<RefCell<Object>>,
     pub boolean: Rc<RefCell<Object>>,
     pub nil: Rc<RefCell<Object>>,
     pub number: Rc<RefCell<Object>>,
@@ -690,7 +689,6 @@ impl VirtualMachine {
             ip: 0,
             stack: Vec::new(),
             object: object.clone(),
-            block: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             boolean: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             nil: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             number: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),

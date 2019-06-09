@@ -1,51 +1,5 @@
 use crate::vm;
 
-fn block_disassemble(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
-    match vm.stack.pop() {
-        Some(vm::Value::Block(_, ip)) => {
-            let mut ip = ip;
-            println!("lambda @{}", ip);
-            loop {
-                let instr = &vm.instructions[ip];
-                println!("    {}", instr);
-                match instr {
-                    vm::Opcode::Ret => break,
-                    _ => {}
-                }
-                ip += 1;
-            }
-            vm.stack.push(vm::Value::Nil(vm.object.clone()));
-            Ok(())
-        }
-        None => Err(vm::VMError {
-            err: "Stack underflow.".to_string(),
-            line: usize::max_value(),
-        }),
-        _ => Err(vm::VMError {
-            err: "Message not understood.".to_string(),
-            line: usize::max_value(),
-        }),
-    }
-}
-
-fn block_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
-    match vm.stack.pop() {
-        Some(vm::Value::Block(_, ip)) => {
-            vm.callstack.push((vm.stack.len(), vm.ip + 1));
-            vm.ip = ip;
-            Ok(())
-        }
-        None => Err(vm::VMError {
-            err: "Stack underflow.".to_string(),
-            line: usize::max_value(),
-        }),
-        _ => Err(vm::VMError {
-            err: "Message not understood.".to_string(),
-            line: usize::max_value(),
-        }),
-    }
-}
-
 fn boolean_and(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
@@ -290,6 +244,43 @@ fn object_set_with(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     }
 }
 
+fn object_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(value) => match value {
+            vm::Value::Block(_, ip) => {
+                vm.callstack.push((vm.stack.len(), vm.ip + 1));
+                vm.ip = ip;
+                Ok(())
+            }
+            vm::Value::Boolean(proto, b) => {
+                vm.stack.push(vm::Value::Boolean(proto.clone(), b));
+                Ok(())
+            }
+            vm::Value::Nil(proto) => {
+                vm.stack.push(vm::Value::Nil(proto.clone()));
+                Ok(())
+            }
+            vm::Value::Number(proto, n) => {
+                vm.stack.push(vm::Value::Number(proto.clone(), n));
+                Ok(())
+            }
+            vm::Value::String(proto, s) => {
+                vm.stack
+                    .push(vm::Value::String(proto.clone(), s.to_string()));
+                Ok(())
+            }
+            _ => Err(vm::VMError {
+                err: "Message not understood.".to_string(),
+                line: usize::max_value(),
+            }),
+        },
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
+
 pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
     vm.object.borrow_mut().members.insert(
         "prototype".to_string(),
@@ -299,15 +290,10 @@ pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
         "set:with:".to_string(),
         vm::Value::RustBlock(object_set_with),
     );
-
-    vm.block.borrow_mut().members.insert(
-        "disassemble".to_string(),
-        vm::Value::RustBlock(block_disassemble),
-    );
-    vm.block
+    vm.object
         .borrow_mut()
         .members
-        .insert("value".to_string(), vm::Value::RustBlock(block_value));
+        .insert("value".to_string(), vm::Value::RustBlock(object_value));
 
     vm.boolean
         .borrow_mut()

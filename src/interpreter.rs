@@ -82,7 +82,7 @@ fn generate(
             block_instr.push(vm::Opcode::Ret);
             let ip = vm.instructions.len();
             vm.instructions.extend(block_instr);
-            instr.push(vm::Opcode::Const(vm::Value::Block(vm.block.clone(), ip)));
+            instr.push(vm::Opcode::Const(vm::Value::Block(vm.object.clone(), ip)));
         }
         parser::Ast::Keyword(obj, msg) => {
             let mut message_name = String::new();
@@ -278,5 +278,13 @@ mod tests {
         );
         eval!("a := 42.", Number, 42.0);
         eval!("test.", Nil);
+        eval!("42 value.", Number, 42.0);
+        eval!(
+            "[42 prototype set: 'value' with: [true.].
+              42 value.] value.",
+            Boolean,
+            true
+        );
+        evalfails!("42 prototype value.", "Message not understood.");
     }
 }
