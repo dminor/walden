@@ -59,6 +59,7 @@ impl Object {
     }
 }
 
+#[derive(Clone)]
 pub enum Value {
     Block(Rc<RefCell<Object>>, usize),
     Boolean(Rc<RefCell<Object>>, bool),
@@ -95,10 +96,12 @@ pub enum Opcode {
     NotEqual,
     Greater,
     GreaterEqual,
+    Arg(usize),
     Call,
     Lookup,
     Pop,
     Ret,
+    Swap,
 }
 
 impl fmt::Display for Opcode {
@@ -115,10 +118,12 @@ impl fmt::Display for Opcode {
             Opcode::NotEqual => write!(f, "ne"),
             Opcode::Greater => write!(f, "gt"),
             Opcode::GreaterEqual => write!(f, "ge"),
+            Opcode::Arg(i) => write!(f, "arg {}", i),
             Opcode::Call => write!(f, "call"),
             Opcode::Lookup => write!(f, "lookup"),
             Opcode::Pop => write!(f, "pop"),
             Opcode::Ret => write!(f, "ret"),
+            Opcode::Swap => write!(f, "swap"),
         }
     }
 }
@@ -337,6 +342,45 @@ impl VirtualMachine {
                 "ge" => {
                     self.instructions.push(Opcode::GreaterEqual);
                 }
+                "arg" => {
+                    if split.len() >= 2 {
+                        match split[1].parse::<usize>() {
+                            Ok(i) => self.instructions.push(Opcode::Arg(i)),
+                            Err(_) => {
+                                return Err(VMError {
+                                    err: "arg requires index.".to_string(),
+                                    line: lineno,
+                                });
+                            }
+                        }
+                    } else {
+                        return Err(VMError {
+                            err: "arg requires index.".to_string(),
+                            line: lineno,
+                        });
+                    }
+                }
+                "block" => {
+                    if split.len() >= 2 {
+                        match split[1].parse::<usize>() {
+                            Ok(ip) => {
+                                self.instructions
+                                    .push(Opcode::Const(Value::Block(self.object.clone(), ip)));
+                            }
+                            Err(_) => {
+                                return Err(VMError {
+                                    err: "block requires ip.".to_string(),
+                                    line: lineno,
+                                });
+                            }
+                        }
+                    } else {
+                        return Err(VMError {
+                            err: "block requires ip.".to_string(),
+                            line: lineno,
+                        });
+                    }
+                }
                 "call" => {
                     self.instructions.push(Opcode::Call);
                 }
@@ -345,6 +389,12 @@ impl VirtualMachine {
                 }
                 "pop" => {
                     self.instructions.push(Opcode::Pop);
+                }
+                "ret" => {
+                    self.instructions.push(Opcode::Ret);
+                }
+                "swap" => {
+                    self.instructions.push(Opcode::Swap);
                 }
                 _ => {
                     return Err(VMError {
@@ -562,9 +612,20 @@ impl VirtualMachine {
                 Opcode::GreaterEqual => {
                     apply_op!(self, Number, Boolean, self.boolean.clone(), >=, GreaterEqual)
                 }
+                Opcode::Arg(u) => match self.callstack.last() {
+                    Some((sp, _)) => {
+                        self.stack.push(self.stack[sp + u - 1].clone());
+                    }
+                    None => {
+                        return Err(VMError {
+                            err: "Call stack underflow.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                },
                 Opcode::Call => match self.stack.pop() {
                     Some(Value::Block(_, ip)) => {
-                        self.callstack.push((self.stack.len() - 1, self.ip + 1));
+                        self.callstack.push((self.stack.len(), self.ip + 1));
                         self.ip = ip;
                         continue;
                     }
@@ -662,14 +723,33 @@ impl VirtualMachine {
                     _ => {}
                 },
                 Opcode::Ret => match self.callstack.pop() {
-                    Some((sp, ip)) => {
+                    Some((_, ip)) => {
                         self.ip = ip;
-                        self.stack.drain(sp..self.stack.len() - 1);
                         continue; // skip incrementing ip
                     }
                     None => {
                         return Err(VMError {
                             err: "Call stack underflow.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                },
+                Opcode::Swap => match self.stack.pop() {
+                    Some(a) => match self.stack.pop() {
+                        Some(b) => {
+                            self.stack.push(a);
+                            self.stack.push(b);
+                        }
+                        None => {
+                            return Err(VMError {
+                                err: "Stack underflow.".to_string(),
+                                line: usize::max_value(),
+                            });
+                        }
+                    },
+                    None => {
+                        return Err(VMError {
+                            err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
                     }
@@ -706,28 +786,29 @@ mod tests {
     use std::rc::Rc;
 
     macro_rules! run {
-        ($input:expr, $stack:expr, $ip:expr, $type:ident, $value:expr) => {{
+        ($input:expr, $ip:expr, $type:ident, $value:expr) => {{
             let mut vm = vm::VirtualMachine::new();
+            vm.ip = $ip;
             match vm.assemble($input) {
                 Ok(()) => match vm.run() {
                     Ok(()) => {
-                        assert_eq!(vm.stack.len(), $stack);
-                        assert_eq!(vm.ip, $ip);
+                        assert_eq!(vm.ip, vm.instructions.len());
+                        assert_eq!(vm.stack.len(), 1);
                         match vm.stack.pop() {
                             Some(vm::Value::$type(_, v)) => {
                                 assert_eq!(v, $value);
                             }
                             _ => {
-                                assert!(false);
+                                assert_eq!("Incorrect type.", "");
                             }
                         }
                     }
-                    _ => {
-                        assert!(false);
+                    Err(e) => {
+                        assert_eq!("Run failed.", e.err);
                     }
                 },
                 _ => {
-                    assert!(false);
+                    assert_eq!("Assemble failed.", "");
                 }
             }
         }};
@@ -771,8 +852,7 @@ mod tests {
             const 2.0
             add
         ",
-            1,
-            3,
+            0,
             Number,
             3.0
         );
@@ -783,8 +863,7 @@ mod tests {
             const 2.0
             div
         ",
-            1,
-            3,
+            0,
             Number,
             0.5
         );
@@ -795,8 +874,7 @@ mod tests {
             const 2.0
             mul
         ",
-            1,
-            3,
+            0,
             Number,
             2.0
         );
@@ -807,8 +885,7 @@ mod tests {
             const 2.0
             sub
         ",
-            1,
-            3,
+            0,
             Number,
             -1.0
         );
@@ -852,8 +929,7 @@ mod tests {
             const 2.0
             lt
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -864,8 +940,7 @@ mod tests {
             const 2.0
             le
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -876,8 +951,7 @@ mod tests {
             const 1.0
             eq
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -888,8 +962,7 @@ mod tests {
             const 1.0
             ne
         ",
-            1,
-            3,
+            0,
             Boolean,
             false
         );
@@ -900,8 +973,7 @@ mod tests {
             const 1.0
             gt
         ",
-            1,
-            3,
+            0,
             Boolean,
             false
         );
@@ -912,8 +984,7 @@ mod tests {
             const 1.0
             ge
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -924,8 +995,7 @@ mod tests {
             const 1.0
             ge
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -936,8 +1006,7 @@ mod tests {
             const false
             eq
         ",
-            1,
-            3,
+            0,
             Boolean,
             false
         );
@@ -950,8 +1019,7 @@ mod tests {
             const false
             eq
         ",
-            1,
-            5,
+            0,
             Boolean,
             false
         );
@@ -962,8 +1030,7 @@ mod tests {
             const 'hello
             eq
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -974,8 +1041,7 @@ mod tests {
             const '
             eq
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -986,8 +1052,7 @@ mod tests {
             const 'world
             eq
         ",
-            1,
-            3,
+            0,
             Boolean,
             false
         );
@@ -998,8 +1063,7 @@ mod tests {
             const 2
             eq
         ",
-            1,
-            3,
+            0,
             Boolean,
             false
         );
@@ -1010,8 +1074,7 @@ mod tests {
             const nil
             eq
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -1022,8 +1085,7 @@ mod tests {
             const nil
             eq
         ",
-            1,
-            3,
+            0,
             Boolean,
             false
         );
@@ -1034,8 +1096,7 @@ mod tests {
             const nil
             ne
         ",
-            1,
-            3,
+            0,
             Boolean,
             true
         );
@@ -1046,8 +1107,7 @@ mod tests {
             const 1.0
             ne
         ",
-            1,
-            3,
+            0,
             Boolean,
             false
         );
@@ -1159,8 +1219,7 @@ mod tests {
             lookup
             call
         ",
-            1,
-            6,
+            0,
             Boolean,
             true
         );
@@ -1169,8 +1228,7 @@ mod tests {
             "
             const 'hello world
         ",
-            1,
-            1,
+            0,
             String,
             "hello world"
         );
@@ -1178,12 +1236,67 @@ mod tests {
         run!(
             "
             const 1
-            const 2
-            const 3
+            const 1
             pop
         ",
+            0,
+            Number,
+            1.0
+        );
+
+        run!(
+            "
+            const 42
+            ret
+            block 0
+            call
+        ",
             2,
+            Number,
+            42.0
+        );
+
+        run!(
+            "
+            const 1
+            const 1
+            add
+            ret
+            block 0
+            call
+        ",
             4,
+            Number,
+            2.0
+        );
+
+        run!(
+            "
+            const 1
+            add
+            ret
+            const 1
+            block 0
+            call
+        ",
+            3,
+            Number,
+            2.0
+        );
+
+        run!(
+            "
+            arg 0
+            const 1
+            add
+            swap
+            pop
+            ret
+            const 1
+            block 0
+            call
+        ",
+            6,
             Number,
             2.0
         );

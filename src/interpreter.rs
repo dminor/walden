@@ -99,8 +99,15 @@ fn generate(
             instr.push(vm::Opcode::Lookup);
             instr.push(vm::Opcode::Call);
         }
-        parser::Ast::Lookup(_) => {
-            instr.push(vm::Opcode::Const(vm::Value::Nil(vm.nil.clone())));
+        parser::Ast::Lookup(id) => {
+            instr.push(vm::Opcode::Arg(0));
+            instr.push(vm::Opcode::Const(vm::Value::String(
+                vm.string.clone(),
+                id.token.to_string(),
+            )));
+            instr.push(vm::Opcode::Lookup);
+            instr.push(vm::Opcode::Swap);
+            instr.push(vm::Opcode::Pop);
         }
         parser::Ast::Unary(obj, msg) => {
             generate(obj, vm, instr)?;
@@ -280,7 +287,6 @@ mod tests {
             "Attempt to call non-lambda value."
         );
         eval!("a := 42.", Number, 42.0);
-        eval!("test.", Nil);
         eval!("42 value.", Number, 42.0);
         eval!(
             "[42 prototype set: 'value' with: [true.].
@@ -289,5 +295,12 @@ mod tests {
             true
         );
         evalfails!("42 prototype value.", "Message not understood.");
+        eval!(
+            "[42 prototype set: 'x' with: true.
+              42 prototype set: 'getX' with: [x.].
+              42 getX.] value.",
+            Boolean,
+            true
+        );
     }
 }
