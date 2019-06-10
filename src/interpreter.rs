@@ -24,9 +24,30 @@ fn generate(
     instr: &mut Vec<vm::Opcode>,
 ) -> Result<(), RuntimeError> {
     match ast {
-        parser::Ast::Assignment(_, expr) => {
-            generate(expr, vm, instr)?;
-        }
+        parser::Ast::Assignment(id, expr) => match &id.token {
+            lexer::Token::Identifier(s) => {
+                instr.push(vm::Opcode::Const(vm::Value::String(
+                    vm.string.clone(),
+                    s.to_string(),
+                )));
+                generate(expr, vm, instr)?;
+                instr.push(vm::Opcode::Arg(0));
+                instr.push(vm::Opcode::Const(vm::Value::String(
+                    vm.string.clone(),
+                    "set:with:".to_string(),
+                )));
+                instr.push(vm::Opcode::Lookup);
+                instr.push(vm::Opcode::Call);
+                instr.push(vm::Opcode::Swap);
+                instr.push(vm::Opcode::Pop);
+            }
+            _ => {
+                return Err(RuntimeError {
+                    err: "Lookup expected identifier.".to_string(),
+                    line: usize::max_value(),
+                });
+            }
+        },
         parser::Ast::Binary(op, lhs, rhs) => {
             generate(lhs, vm, instr)?;
             generate(rhs, vm, instr)?;
@@ -286,7 +307,6 @@ mod tests {
               42 test.] value.",
             "Attempt to call non-lambda value."
         );
-        eval!("a := 42.", Number, 42.0);
         eval!("42 value.", Number, 42.0);
         eval!(
             "[42 prototype set: 'value' with: [true.].
@@ -301,6 +321,15 @@ mod tests {
               42 getX.] value.",
             Boolean,
             true
+        );
+        eval!(
+            "[42 prototype set: 'x' with: 1.
+              42 prototype set: 'getX' with: [x.].
+              42 prototype set: 'incX' with: [x := x + 1.].
+              42 prototype incX incX.
+              42 getX.] value.",
+            Number,
+            3.0
         );
     }
 }
