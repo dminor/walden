@@ -141,6 +141,8 @@ pub struct VirtualMachine {
     pub nil: Rc<RefCell<Object>>,
     pub number: Rc<RefCell<Object>>,
     pub string: Rc<RefCell<Object>>,
+
+    pub enable_tracing: bool,
 }
 
 macro_rules! apply_op {
@@ -411,6 +413,9 @@ impl VirtualMachine {
 
     pub fn run(&mut self) -> Result<(), VMError> {
         while self.ip < self.instructions.len() {
+            if self.enable_tracing {
+                println!("{}: {}", self.ip, self.instructions[self.ip]);
+            }
             match &self.instructions[self.ip] {
                 Opcode::Add => apply_op!(self, Number, Number, self.number.clone(), +, Add),
                 Opcode::Const(obj) => match obj {
@@ -755,6 +760,11 @@ impl VirtualMachine {
                     }
                 },
             }
+            if self.enable_tracing {
+                for i in 0..self.stack.len() {
+                    println!("  stack {}: {}", i, self.stack[self.stack.len() - 1 - i]);
+                }
+            }
             self.ip += 1;
         }
         Ok(())
@@ -773,6 +783,7 @@ impl VirtualMachine {
             nil: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             number: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             string: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
+            enable_tracing: false,
         };
 
         stdlib::create_standard_objects(&mut vm);

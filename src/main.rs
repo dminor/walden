@@ -53,15 +53,18 @@ fn eval(filename: String, s: String, vm: &mut vm::VirtualMachine) {
 
 fn main() -> io::Result<()> {
     let mut vm = vm::VirtualMachine::new();
-
     let args: Vec<String> = env::args().collect();
-    if args.len() > 1 {
-        let filename = args[1].to_string();
-        let mut file = File::open(&filename)?;
-        let mut program = String::new();
-        file.read_to_string(&mut program)?;
-        eval(filename, program, &mut vm);
-        return Ok(());
+    for i in 1..args.len() {
+        if args[i] == "--enable-tracing" {
+            vm.enable_tracing = true;
+        } else {
+            let filename = args[i].to_string();
+            let mut file = File::open(&filename)?;
+            let mut program = String::new();
+            file.read_to_string(&mut program)?;
+            eval(filename, program, &mut vm);
+            return Ok(());
+        }
     }
 
     let stdin = io::stdin();
