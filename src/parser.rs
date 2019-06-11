@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt;
 
 /*
+program        -> (statement)*
 statement      -> IDENTIFIER ":=" expression "."
                   | expression "."
 expression     -> keyword
@@ -23,6 +24,7 @@ pub enum Ast {
     Block(Vec<lexer::LexedToken>, Vec<lexer::LexedToken>, Vec<Ast>),
     Keyword(Box<Ast>, Vec<(lexer::LexedToken, Ast)>),
     Lookup(lexer::LexedToken),
+    Program(Vec<Ast>),
     Unary(Box<Ast>, lexer::LexedToken),
     Value(lexer::LexedToken),
 }
@@ -41,11 +43,18 @@ impl fmt::Display for Ast {
                 }
                 write!(f, ")")
             }
-            Ast::Lookup(id) => write!(f, "(lookup {}:Identifier)", id.token),
             Ast::Keyword(obj, msg) => {
                 write!(f, "(keyword {}", obj)?;
                 for kw in msg {
                     write!(f, " {}:Identifier {}", kw.0.token, kw.1)?;
+                }
+                write!(f, ")")
+            }
+            Ast::Lookup(id) => write!(f, "(lookup {}:Identifier)", id.token),
+            Ast::Program(statements) => {
+                write!(f, "(program")?;
+                for statement in statements {
+                    write!(f, " {}", statement)?;
                 }
                 write!(f, ")")
             }
@@ -94,6 +103,26 @@ macro_rules! expect {
             }
         }
     };};
+}
+fn program(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
+    let mut statements = Vec::new();
+    loop {
+        match tokens.front() {
+            None => {
+                break;
+            }
+            _ => {}
+        }
+        match statement(tokens) {
+            Ok(ast) => {
+                statements.push(ast);
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+    Ok(Ast::Program(statements))
 }
 
 fn statement(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
@@ -368,7 +397,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
 }
 
 pub fn parse(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError> {
-    statement(tokens)
+    program(tokens)
 }
 
 #[cfg(test)]
@@ -405,79 +434,88 @@ mod tests {
 
     #[test]
     fn parsing() {
-        parse!("42.", "42:Number");
-        parse!("-42.0.", "-42:Number");
-        parse!("Id.", "(lookup Id:Identifier)");
-        parse!("'hello world'.", "hello world:String");
-        parsefails!("", "Unexpected end of input.");
-        parse!("One two.", "(unary (lookup One:Identifier) two:Identifier)");
+        parse!("42.", "(program 42:Number)");
+        parse!("-42.0.", "(program -42:Number)");
+        parse!("Id.", "(program (lookup Id:Identifier))");
+        parse!("'hello world'.", "(program hello world:String)");
+        parse!("", "(program)");
+        parse!(
+            "One two.",
+            "(program (unary (lookup One:Identifier) two:Identifier))"
+        );
         parse!(
             "One two three.",
-            "(unary (unary (lookup One:Identifier) two:Identifier) three:Identifier)"
+            "(program (unary (unary (lookup One:Identifier) two:Identifier) three:Identifier))"
         );
-        parse!("3.14159 cos.", "(unary 3.14159:Number cos:Identifier)");
+        parse!(
+            "3.14159 cos.",
+            "(program (unary 3.14159:Number cos:Identifier))"
+        );
         parse!(
             "'hello world' len.",
-            "(unary hello world:String len:Identifier)"
+            "(program (unary hello world:String len:Identifier))"
         );
-        parse!("2 + 3.", "(binary + 2:Number 3:Number)");
-        parse!("2 - -3.", "(binary - 2:Number -3:Number)");
-        parse!("2 * 3.", "(binary * 2:Number 3:Number)");
-        parse!("2 / 3.", "(binary / 2:Number 3:Number)");
-        parse!("2 < 3.", "(binary < 2:Number 3:Number)");
-        parse!("2 <= 3.", "(binary <= 2:Number 3:Number)");
-        parse!("2 = 3.", "(binary = 2:Number 3:Number)");
-        parse!("2 ~= 3.", "(binary ~= 2:Number 3:Number)");
-        parse!("2 > 3.", "(binary > 2:Number 3:Number)");
-        parse!("2 >= 3.", "(binary >= 2:Number 3:Number)");
+        parse!("2 + 3.", "(program (binary + 2:Number 3:Number))");
+        parse!("2 - -3.", "(program (binary - 2:Number -3:Number))");
+        parse!("2 * 3.", "(program (binary * 2:Number 3:Number))");
+        parse!("2 / 3.", "(program (binary / 2:Number 3:Number))");
+        parse!("2 < 3.", "(program (binary < 2:Number 3:Number))");
+        parse!("2 <= 3.", "(program (binary <= 2:Number 3:Number))");
+        parse!("2 = 3.", "(program (binary = 2:Number 3:Number))");
+        parse!("2 ~= 3.", "(program (binary ~= 2:Number 3:Number))");
+        parse!("2 > 3.", "(program (binary > 2:Number 3:Number))");
+        parse!("2 >= 3.", "(program (binary >= 2:Number 3:Number))");
         parse!(
             "4 sqrt * 3.",
-            "(binary * (unary 4:Number sqrt:Identifier) 3:Number)"
+            "(program (binary * (unary 4:Number sqrt:Identifier) 3:Number))"
         );
         parse!(
             "2 + 4 sqrt * 3.",
-            "(binary * (binary + 2:Number (unary 4:Number sqrt:Identifier)) 3:Number)"
+            "(program (binary * (binary + 2:Number (unary 4:Number sqrt:Identifier)) 3:Number))"
         );
         parse!(
             "2 * 3 * 4.",
-            "(binary * (binary * 2:Number 3:Number) 4:Number)"
+            "(program (binary * (binary * 2:Number 3:Number) 4:Number))"
         );
         parse!(
             "'hello ' concat: 'world'.",
-            "(keyword hello :String concat:Identifier world:String)"
+            "(program (keyword hello :String concat:Identifier world:String))"
         );
         parse!(
             "a b:1 c: 2.",
-            "(keyword (lookup a:Identifier) b:Identifier 1:Number c:Identifier 2:Number)"
+            "(program (keyword (lookup a:Identifier) b:Identifier 1:Number c:Identifier 2:Number))"
         );
         parse!(
             "a mod: 81 sqrt.",
-            "(keyword (lookup a:Identifier) mod:Identifier (unary 81:Number sqrt:Identifier))"
+            "(program (keyword (lookup a:Identifier) mod:Identifier (unary 81:Number sqrt:Identifier)))"
         );
         // From Wikipedia example of Smalltalk message precedence
         parse!(
             "3 factorial + 4 factorial between: 10 and: 100.",
-            "(keyword (binary + (unary 3:Number factorial:Identifier) (unary 4:Number factorial:Identifier)) between:Identifier 10:Number and:Identifier 100:Number)"
+            "(program (keyword (binary + (unary 3:Number factorial:Identifier) (unary 4:Number factorial:Identifier)) between:Identifier 10:Number and:Identifier 100:Number))"
         );
         parse!(
             "(3 factorial + 4) factorial between: 10 and: 100.",
-            "(keyword (unary (binary + (unary 3:Number factorial:Identifier) 4:Number) factorial:Identifier) between:Identifier 10:Number and:Identifier 100:Number)"
+            "(program (keyword (unary (binary + (unary 3:Number factorial:Identifier) 4:Number) factorial:Identifier) between:Identifier 10:Number and:Identifier 100:Number))"
         );
         parse!(
             "a b:-2.",
-            "(keyword (lookup a:Identifier) b:Identifier -2:Number)"
+            "(program (keyword (lookup a:Identifier) b:Identifier -2:Number))"
         );
         parse!(
             "3 + (4 * 5).",
-            "(binary + 3:Number (binary * 4:Number 5:Number))"
+            "(program (binary + 3:Number (binary * 4:Number 5:Number)))"
         );
         parsefails!("[1. 2.", "Unexpected end of input.");
-        parse!("[].", "(block)");
-        parse!("[1. 2. 3.].", "(block 1:Number 2:Number 3:Number)");
-        parse!("a := 3.", "(assignment a:Identifier 3:Number)");
+        parse!("[].", "(program (block))");
+        parse!(
+            "[1. 2. 3.].",
+            "(program (block 1:Number 2:Number 3:Number))"
+        );
+        parse!("a := 3.", "(program (assignment a:Identifier 3:Number))");
         parse!(
             "a := 3 * 4 + 5.",
-            "(assignment a:Identifier (binary + (binary * 3:Number 4:Number) 5:Number))"
+            "(program (assignment a:Identifier (binary + (binary * 3:Number 4:Number) 5:Number)))"
         );
     }
 }

@@ -128,6 +128,16 @@ fn generate(
             instr.push(vm::Opcode::Swap);
             instr.push(vm::Opcode::Pop);
         }
+        parser::Ast::Program(statements) => {
+            let mut count = 0;
+            for statement in statements {
+                generate(statement, vm, instr)?;
+                count += 1;
+                if count != statements.len() {
+                    instr.push(vm::Opcode::Pop);
+                }
+            }
+        }
         parser::Ast::Unary(obj, msg) => {
             generate(obj, vm, instr)?;
             instr.push(vm::Opcode::Const(vm::Value::String(
@@ -328,6 +338,26 @@ mod tests {
               42 getX.] value.",
             Number,
             3.0
+        );
+        eval!(
+            "42 prototype set: 'x' with: 1.
+             42 prototype set: 'getX' with: [x.].
+             42 prototype set: 'incX' with: [x := x + 1.].
+             42 prototype incX incX.
+             42 getX.",
+            Number,
+            3.0
+        );
+        eval!("a := 42. a.", Number, 42.0);
+        eval!("a := 42. [[a.] value.] value.", Number, 42.0);
+        eval!("a := 1. [[a := 2.] value.] value. a.", Number, 2.0);
+        eval!(
+            "a := 1.
+             b := [a.].
+             a := 2.
+             b value.",
+            Number,
+            2.0
         );
     }
 }
