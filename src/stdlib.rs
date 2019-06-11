@@ -1,4 +1,6 @@
 use crate::vm;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn boolean_and(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
@@ -181,6 +183,25 @@ fn boolean_or(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     }
 }
 
+fn object_clone(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Object(obj)) => {
+            vm.stack.push(vm::Value::Object(Rc::new(RefCell::new(
+                vm::Object::new_with_prototype(obj.clone()),
+            ))));
+            Ok(())
+        }
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+        _ => Err(vm::VMError {
+            err: "Message not understood.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
+
 fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(value) => match value {
@@ -315,9 +336,13 @@ macro_rules! setobject {
             vm::Value::RustBlock($name.to_string(), $fn),
         );
     }};
+    ($target:expr, $name:expr, $obj:expr) => {{
+        $target.borrow_mut().members.insert($name.to_string(), $obj);
+    }};
 }
 
 pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
+    setobject!(vm.object, "clone", object_clone);
     setobject!(vm.object, "prototype", object_prototype);
     setobject!(vm.object, "set:with:", object_set_with);
     setobject!(vm.object, "value", object_value);
@@ -327,4 +352,6 @@ pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
     setobject!(vm.boolean, "ifTrue:", boolean_iftrue);
     setobject!(vm.boolean, "not", boolean_not);
     setobject!(vm.boolean, "or:", boolean_or);
+
+    setobject!(vm.global, "Object", vm::Value::Object(vm.object.clone()));
 }

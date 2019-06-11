@@ -340,11 +340,12 @@ mod tests {
             3.0
         );
         eval!(
-            "42 prototype set: 'x' with: 1.
-             42 prototype set: 'getX' with: [x.].
-             42 prototype set: 'incX' with: [x := x + 1.].
-             42 prototype incX incX.
-             42 getX.",
+            "obj := Object clone.
+             obj set: 'x' with: 1.
+             obj set: 'getX' with: [x.].
+             obj set: 'incX' with: [x := x + 1.].
+             obj incX incX.
+             obj getX.",
             Number,
             3.0
         );
