@@ -77,7 +77,7 @@ impl fmt::Display for Value {
             Value::Boolean(_, b) => write!(f, "{}", b),
             Value::Nil(_) => write!(f, "nil"),
             Value::Number(_, n) => write!(f, "{}", n),
-            Value::Object(obj) => write!(f, "(object {:p})", obj),
+            Value::Object(obj) => write!(f, "(object {:p})", *obj),
             Value::RustBlock(name, _) => write!(f, "(lambda {})", name),
             Value::String(_, s) => write!(f, "'{}'", s),
         }
