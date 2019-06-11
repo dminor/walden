@@ -212,10 +212,36 @@ fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
 
 fn object_set_with(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
+        Some(vm::Value::Block(proto, ip)) => match vm.stack.pop() {
+            Some(value) => match vm.stack.pop() {
+                Some(vm::Value::String(_, s)) => {
+                    proto
+                        .borrow_mut()
+                        .members
+                        .insert(s.to_string(), value.clone());
+                    vm.stack.push(vm::Value::Block(proto.clone(), ip));
+                    Ok(())
+                }
+                None => Err(vm::VMError {
+                    err: "Stack underflow.".to_string(),
+                    line: usize::max_value(),
+                }),
+                _ => Err(vm::VMError {
+                    err: "set: expects string.".to_string(),
+                    line: usize::max_value(),
+                }),
+            },
+            None => Err(vm::VMError {
+                err: "Stack underflow.".to_string(),
+                line: usize::max_value(),
+            }),
+        },
         Some(vm::Value::Object(obj)) => match vm.stack.pop() {
             Some(value) => match vm.stack.pop() {
                 Some(vm::Value::String(_, s)) => {
-                    obj.borrow_mut().members.insert(s.to_string(), value);
+                    obj.borrow_mut()
+                        .members
+                        .insert(s.to_string(), value.clone());
                     vm.stack.push(vm::Value::Object(obj.clone()));
                     Ok(())
                 }
@@ -248,6 +274,7 @@ fn object_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(value) => match value {
             vm::Value::Block(_, ip) => {
+                vm.stack.push(value.clone());
                 vm.callstack.push((vm.stack.len(), vm.ip + 1));
                 vm.ip = ip;
                 Ok(())

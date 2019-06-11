@@ -38,8 +38,6 @@ fn generate(
                 )));
                 instr.push(vm::Opcode::Lookup);
                 instr.push(vm::Opcode::Call);
-                instr.push(vm::Opcode::Swap);
-                instr.push(vm::Opcode::Pop);
             }
             _ => {
                 return Err(RuntimeError {

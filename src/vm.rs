@@ -142,6 +142,8 @@ pub struct VirtualMachine {
     pub number: Rc<RefCell<Object>>,
     pub string: Rc<RefCell<Object>>,
 
+    pub global: Rc<RefCell<Object>>,
+
     pub enable_tracing: bool,
 }
 
@@ -419,8 +421,25 @@ impl VirtualMachine {
             match &self.instructions[self.ip] {
                 Opcode::Add => apply_op!(self, Number, Number, self.number.clone(), +, Add),
                 Opcode::Const(obj) => match obj {
-                    Value::Block(proto, ip) => {
-                        self.stack.push(Value::Block(proto.clone(), *ip));
+                    Value::Block(_, ip) => {
+                        let proto;
+                        match self.callstack.last() {
+                            Some((sp, _)) => match &self.stack[sp - 1] {
+                                Value::Object(obj) => {
+                                    proto = obj.clone();
+                                }
+                                Value::Block(obj, _) => {
+                                    proto = obj.clone();
+                                }
+                                _ => {
+                                    proto = self.global.clone();
+                                }
+                            },
+                            None => {
+                                proto = self.global.clone();
+                            }
+                        }
+                        self.stack.push(Value::Block(proto, *ip));
                     }
                     Value::Boolean(proto, b) => {
                         self.stack.push(Value::Boolean(proto.clone(), *b));
@@ -622,10 +641,7 @@ impl VirtualMachine {
                         self.stack.push(self.stack[sp + u - 1].clone());
                     }
                     None => {
-                        return Err(VMError {
-                            err: "Call stack underflow.".to_string(),
-                            line: usize::max_value(),
-                        });
+                        self.stack.push(Value::Object(self.global.clone()));
                     }
                 },
                 Opcode::Call => match self.stack.pop() {
@@ -783,6 +799,7 @@ impl VirtualMachine {
             nil: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             number: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             string: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
+            global: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             enable_tracing: false,
         };
 
