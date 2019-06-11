@@ -231,7 +231,7 @@ fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     }
 }
 
-fn object_set_with(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(vm::Value::Block(proto, ip)) => match vm.stack.pop() {
             Some(value) => match vm.stack.pop() {
@@ -344,7 +344,7 @@ macro_rules! setobject {
 pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
     setobject!(vm.object, "clone", object_clone);
     setobject!(vm.object, "prototype", object_prototype);
-    setobject!(vm.object, "set:with:", object_set_with);
+    setobject!(vm.object, "set:to:", object_set_to);
     setobject!(vm.object, "value", object_value);
     setobject!(vm.boolean, "and:", boolean_and);
     setobject!(vm.boolean, "ifFalse:", boolean_iffalse);

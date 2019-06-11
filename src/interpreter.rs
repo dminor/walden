@@ -34,7 +34,7 @@ fn generate(
                 instr.push(vm::Opcode::Arg(0));
                 instr.push(vm::Opcode::Const(vm::Value::String(
                     vm.string.clone(),
-                    "set:with:".to_string(),
+                    "set:to:".to_string(),
                 )));
                 instr.push(vm::Opcode::Lookup);
                 instr.push(vm::Opcode::Call);
@@ -304,36 +304,36 @@ mod tests {
         eval!("true ifTrue: [1.] ifFalse: [2.].", Number, 1.0);
         eval!("[42.] value.", Number, 42.0);
         eval!(
-            "[42 prototype set: 'test' with: [true.].
+            "[42 prototype set: 'test' to: [true.].
               42 test.] value.",
             Boolean,
             true
         );
         evalfails!("42 test.", "Message not understood.");
         evalfails!(
-            "[42 prototype set: 'test' with: true.
+            "[42 prototype set: 'test' to: true.
               42 test.] value.",
             "Attempt to call non-lambda value."
         );
         eval!("42 value.", Number, 42.0);
         eval!(
-            "[42 prototype set: 'value' with: [true.].
+            "[42 prototype set: 'value' to: [true.].
               42 value.] value.",
             Boolean,
             true
         );
         evalfails!("42 prototype value.", "Message not understood.");
         eval!(
-            "[42 prototype set: 'x' with: true.
-              42 prototype set: 'getX' with: [x.].
+            "[42 prototype set: 'x' to: true.
+              42 prototype set: 'getX' to: [x.].
               42 getX.] value.",
             Boolean,
             true
         );
         eval!(
-            "[42 prototype set: 'x' with: 1.
-              42 prototype set: 'getX' with: [x.].
-              42 prototype set: 'incX' with: [x := x + 1.].
+            "[42 prototype set: 'x' to: 1.
+              42 prototype set: 'getX' to: [x.].
+              42 prototype set: 'incX' to: [x := x + 1.].
               42 prototype incX incX.
               42 getX.] value.",
             Number,
@@ -341,9 +341,9 @@ mod tests {
         );
         eval!(
             "obj := Object clone.
-             obj set: 'x' with: 1.
-             obj set: 'getX' with: [x.].
-             obj set: 'incX' with: [x := x + 1.].
+             obj set: 'x' to: 1.
+             obj set: 'getX' to: [x.].
+             obj set: 'incX' to: [x := x + 1.].
              obj incX incX.
              obj getX.",
             Number,
