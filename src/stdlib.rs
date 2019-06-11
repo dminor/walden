@@ -201,7 +201,7 @@ fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
                 vm.stack.push(result);
                 Ok(())
             }
-            vm::Value::RustBlock(_) => unreachable!(),
+            vm::Value::RustBlock(_, _) => unreachable!(),
         },
         None => Err(vm::VMError {
             err: "Stack underflow.".to_string(),
@@ -308,42 +308,23 @@ fn object_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     }
 }
 
-pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
-    vm.object.borrow_mut().members.insert(
-        "prototype".to_string(),
-        vm::Value::RustBlock(object_prototype),
-    );
-    vm.object.borrow_mut().members.insert(
-        "set:with:".to_string(),
-        vm::Value::RustBlock(object_set_with),
-    );
-    vm.object
-        .borrow_mut()
-        .members
-        .insert("value".to_string(), vm::Value::RustBlock(object_value));
+macro_rules! setobject {
+    ($target:expr, $name:expr, $fn:ident) => {{
+        $target.borrow_mut().members.insert(
+            $name.to_string(),
+            vm::Value::RustBlock($name.to_string(), $fn),
+        );
+    }};
+}
 
-    vm.boolean
-        .borrow_mut()
-        .members
-        .insert("and:".to_string(), vm::Value::RustBlock(boolean_and));
-    vm.boolean.borrow_mut().members.insert(
-        "ifFalse:".to_string(),
-        vm::Value::RustBlock(boolean_iffalse),
-    );
-    vm.boolean.borrow_mut().members.insert(
-        "ifTrue:ifFalse:".to_string(),
-        vm::Value::RustBlock(boolean_iftrue_iffalse),
-    );
-    vm.boolean
-        .borrow_mut()
-        .members
-        .insert("ifTrue:".to_string(), vm::Value::RustBlock(boolean_iftrue));
-    vm.boolean
-        .borrow_mut()
-        .members
-        .insert("not".to_string(), vm::Value::RustBlock(boolean_not));
-    vm.boolean
-        .borrow_mut()
-        .members
-        .insert("or:".to_string(), vm::Value::RustBlock(boolean_or));
+pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
+    setobject!(vm.object, "prototype", object_prototype);
+    setobject!(vm.object, "set:with:", object_set_with);
+    setobject!(vm.object, "value", object_value);
+    setobject!(vm.boolean, "and:", boolean_and);
+    setobject!(vm.boolean, "ifFalse:", boolean_iffalse);
+    setobject!(vm.boolean, "ifTrue:ifFalse:", boolean_iftrue_iffalse);
+    setobject!(vm.boolean, "ifTrue:", boolean_iftrue);
+    setobject!(vm.boolean, "not", boolean_not);
+    setobject!(vm.boolean, "or:", boolean_or);
 }

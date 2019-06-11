@@ -34,7 +34,7 @@ impl Object {
                 Value::Nil(proto) => Some(Value::Nil(proto.clone())),
                 Value::Number(proto, n) => Some(Value::Number(proto.clone(), *n)),
                 Value::Object(obj) => Some(Value::Object(obj.clone())),
-                Value::RustBlock(f) => Some(Value::RustBlock(*f)),
+                Value::RustBlock(name, f) => Some(Value::RustBlock(name.to_string(), *f)),
                 Value::String(proto, s) => Some(Value::String(proto.clone(), s.to_string())),
             },
             None => match &self.prototype {
@@ -66,7 +66,7 @@ pub enum Value {
     Nil(Rc<RefCell<Object>>),
     Number(Rc<RefCell<Object>>, f64),
     Object(Rc<RefCell<Object>>),
-    RustBlock(fn(&mut VirtualMachine) -> Result<(), VMError>),
+    RustBlock(String, fn(&mut VirtualMachine) -> Result<(), VMError>),
     String(Rc<RefCell<Object>>, String),
 }
 
@@ -77,8 +77,8 @@ impl fmt::Display for Value {
             Value::Boolean(_, b) => write!(f, "{}", b),
             Value::Nil(_) => write!(f, "nil"),
             Value::Number(_, n) => write!(f, "{}", n),
-            Value::Object(_) => write!(f, "(object)"),
-            Value::RustBlock(_) => write!(f, "(lambda)"),
+            Value::Object(obj) => write!(f, "(object {:p})", obj),
+            Value::RustBlock(name, _) => write!(f, "(lambda {})", name),
             Value::String(_, s) => write!(f, "'{}'", s),
         }
     }
@@ -453,7 +453,7 @@ impl VirtualMachine {
                     Value::Object(_) => {
                         unreachable!();
                     }
-                    Value::RustBlock(_) => {
+                    Value::RustBlock(_, _) => {
                         unreachable!();
                     }
                     Value::String(proto, s) => {
@@ -519,8 +519,8 @@ impl VirtualMachine {
                         _ => unreachable!(),
                     },
 
-                    Some(Value::RustBlock(_)) => match self.stack.pop() {
-                        Some(Value::RustBlock(_)) => match self.stack.pop() {
+                    Some(Value::RustBlock(_, _)) => match self.stack.pop() {
+                        Some(Value::RustBlock(_, _)) => match self.stack.pop() {
                             None => {
                                 return Err(VMError {
                                     err: "Stack underflow.".to_string(),
@@ -602,8 +602,8 @@ impl VirtualMachine {
                             self.stack.push(Value::Boolean(self.boolean.clone(), true));
                         }
                     },
-                    Some(Value::RustBlock(_)) => match self.stack.pop() {
-                        Some(Value::RustBlock(_)) => match self.stack.pop() {
+                    Some(Value::RustBlock(_, _)) => match self.stack.pop() {
+                        Some(Value::RustBlock(_, _)) => match self.stack.pop() {
                             None => {
                                 return Err(VMError {
                                     err: "Stack underflow.".to_string(),
@@ -650,7 +650,7 @@ impl VirtualMachine {
                         self.ip = ip;
                         continue;
                     }
-                    Some(Value::RustBlock(lambda)) => {
+                    Some(Value::RustBlock(_, lambda)) => {
                         let ip = self.ip;
                         match lambda(self) {
                             Ok(()) => {
@@ -708,7 +708,7 @@ impl VirtualMachine {
                             }
                             self.stack.push(result);
                         }
-                        Some(Value::RustBlock(_)) => {
+                        Some(Value::RustBlock(_, _)) => {
                             return Err(VMError {
                                 err: "Rustblock does not support lookup.".to_string(),
                                 line: usize::max_value(),
