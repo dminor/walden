@@ -32,6 +32,7 @@ fn generate(
                 )));
                 generate(expr, vm, instr)?;
                 instr.push(vm::Opcode::Arg(0));
+                instr.push(vm::Opcode::Dup);
                 instr.push(vm::Opcode::Const(vm::Value::String(
                     vm.string.clone(),
                     "set:to:".to_string(),
@@ -124,6 +125,7 @@ fn generate(
                 generate(&kw.1, vm, instr)?;
             }
             generate(obj, vm, instr)?;
+            instr.push(vm::Opcode::Dup);
             instr.push(vm::Opcode::Const(vm::Value::String(
                 vm.string.clone(),
                 message_name,
@@ -138,8 +140,6 @@ fn generate(
                 id.token.to_string(),
             )));
             instr.push(vm::Opcode::Lookup);
-            instr.push(vm::Opcode::Swap);
-            instr.push(vm::Opcode::Pop);
         }
         parser::Ast::Program(statements) => {
             let mut count = 0;
@@ -153,6 +153,7 @@ fn generate(
         }
         parser::Ast::Unary(obj, msg) => {
             generate(obj, vm, instr)?;
+            instr.push(vm::Opcode::Dup);
             instr.push(vm::Opcode::Const(vm::Value::String(
                 vm.string.clone(),
                 msg.token.to_string(),

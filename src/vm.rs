@@ -100,6 +100,7 @@ pub enum Opcode {
     GreaterEqual,
     Arg(usize),
     Call,
+    Dup,
     Lookup,
     Pop,
     Ret,
@@ -122,6 +123,7 @@ impl fmt::Display for Opcode {
             Opcode::GreaterEqual => write!(f, "ge"),
             Opcode::Arg(i) => write!(f, "arg {}", i),
             Opcode::Call => write!(f, "call"),
+            Opcode::Dup => write!(f, "dup"),
             Opcode::Lookup => write!(f, "lookup"),
             Opcode::Pop => write!(f, "pop"),
             Opcode::Ret => write!(f, "ret"),
@@ -396,6 +398,9 @@ impl VirtualMachine {
                 }
                 "call" => {
                     self.instructions.push(Opcode::Call);
+                }
+                "dup" => {
+                    self.instructions.push(Opcode::Dup);
                 }
                 "lookup" => {
                     self.instructions.push(Opcode::Lookup);
@@ -708,8 +713,20 @@ impl VirtualMachine {
                         });
                     }
                 },
+                Opcode::Dup => match self.stack.pop() {
+                    Some(a) => {
+                        self.stack.push(a.clone());
+                        self.stack.push(a);
+                    },
+                    None => {
+                        return Err(VMError {
+                            err: "Stack underflow.".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                },
                 Opcode::Lookup => match self.stack.pop() {
-                    Some(Value::String(_, s)) => match self.stack.last() {
+                    Some(Value::String(_, s)) => match self.stack.pop() {
                         Some(Value::Block(proto, _, _))
                         | Some(Value::Boolean(proto, _))
                         | Some(Value::Nil(proto))
@@ -1197,6 +1214,7 @@ mod tests {
         match vm.assemble(
             "
             const true
+            dup
             const 'prototype
             lookup
             call
@@ -1205,7 +1223,7 @@ mod tests {
             Ok(()) => match vm.run() {
                 Ok(()) => {
                     assert_eq!(vm.stack.len(), 1);
-                    assert_eq!(vm.ip, 4);
+                    assert_eq!(vm.ip, 5);
                     match vm.stack.pop() {
                         Some(vm::Value::Object(obj)) => {
                             assert!(Rc::ptr_eq(&obj, &vm.boolean));
@@ -1228,9 +1246,11 @@ mod tests {
         match vm.assemble(
             "
             const true
+            dup
             const 'prototype
             lookup
             call
+            dup
             const 'prototype
             lookup
             call
@@ -1239,7 +1259,7 @@ mod tests {
             Ok(()) => match vm.run() {
                 Ok(()) => {
                     assert_eq!(vm.stack.len(), 1);
-                    assert_eq!(vm.ip, 7);
+                    assert_eq!(vm.ip, 9);
                     match vm.stack.pop() {
                         Some(vm::Value::Object(obj)) => {
                             assert!(Rc::ptr_eq(&obj, &vm.object));
@@ -1273,6 +1293,7 @@ mod tests {
             const 1.0
             const 1.0
             ne
+            dup
             const 'not
             lookup
             call
