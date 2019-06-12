@@ -99,8 +99,8 @@ fn boolean_iftrue(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
 fn boolean_iftrue_iffalse(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
-            Some(vm::Value::Block(_, _, false_ip)) => match vm.stack.pop() {
-                Some(vm::Value::Block(_, _, true_ip)) => {
+            Some(vm::Value::Block(_, _, true_ip)) => match vm.stack.pop() {
+                Some(vm::Value::Block(_, _, false_ip)) => {
                     if a {
                         vm.callstack.push((vm.stack.len(), vm.ip + 1));
                         vm.ip = true_ip;
@@ -234,8 +234,8 @@ fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
 fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(vm::Value::Block(proto, params, ip)) => match vm.stack.pop() {
-            Some(value) => match vm.stack.pop() {
-                Some(vm::Value::String(_, s)) => {
+            Some(vm::Value::String(_, s)) => match vm.stack.pop() {
+                Some(value) => {
                     proto
                         .borrow_mut()
                         .members
@@ -248,19 +248,19 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 }),
-                _ => Err(vm::VMError {
-                    err: "set: expects string.".to_string(),
-                    line: usize::max_value(),
-                }),
             },
             None => Err(vm::VMError {
                 err: "Stack underflow.".to_string(),
                 line: usize::max_value(),
             }),
+            _ => Err(vm::VMError {
+                err: "set: expects string.".to_string(),
+                line: usize::max_value(),
+            }),
         },
         Some(vm::Value::Object(obj)) => match vm.stack.pop() {
-            Some(value) => match vm.stack.pop() {
-                Some(vm::Value::String(_, s)) => {
+            Some(vm::Value::String(_, s)) => match vm.stack.pop() {
+                Some(value) => {
                     obj.borrow_mut()
                         .members
                         .insert(s.to_string(), value.clone());
@@ -271,13 +271,13 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 }),
-                _ => Err(vm::VMError {
-                    err: "set: expects string.".to_string(),
-                    line: usize::max_value(),
-                }),
             },
             None => Err(vm::VMError {
                 err: "Stack underflow.".to_string(),
+                line: usize::max_value(),
+            }),
+            _ => Err(vm::VMError {
+                err: "set: expects string.".to_string(),
                 line: usize::max_value(),
             }),
         },

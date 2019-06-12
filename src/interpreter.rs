@@ -26,11 +26,11 @@ fn generate(
     match ast {
         parser::Ast::Assignment(id, expr) => match &id.token {
             lexer::Token::Identifier(s) => {
+                generate(expr, vm, instr)?;
                 instr.push(vm::Opcode::Const(vm::Value::String(
                     vm.string.clone(),
                     s.to_string(),
                 )));
-                generate(expr, vm, instr)?;
                 instr.push(vm::Opcode::Arg(0));
                 instr.push(vm::Opcode::Dup);
                 instr.push(vm::Opcode::Const(vm::Value::String(
@@ -119,10 +119,10 @@ fn generate(
         }
         parser::Ast::Keyword(obj, msg) => {
             let mut message_name = String::new();
-            for kw in msg {
-                message_name.push_str(&kw.0.token.to_string());
+            for i in 0..msg.len() {
+                message_name.push_str(&msg[i].0.token.to_string());
                 message_name.push(':');
-                generate(&kw.1, vm, instr)?;
+                generate(&msg[msg.len() - i - 1].1, vm, instr)?;
             }
             generate(obj, vm, instr)?;
             instr.push(vm::Opcode::Dup);
@@ -404,6 +404,15 @@ mod tests {
             "obj := Object clone.
              obj set: 'test:' to: [:a|[a.].].
              (obj test: 2) value.",
+            Number,
+            2.0
+        );
+
+        eval!(
+            "obj := Object clone.
+             obj set: 'test:' to: [:a|[a.].].
+             f1 := (obj test: 2).
+             f1 value.",
             Number,
             2.0
         );
