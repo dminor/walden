@@ -36,8 +36,12 @@ impl fmt::Display for Ast {
                 write!(f, "(assignment {}:Identifier {})", id.token, *expr)
             }
             Ast::Binary(op, obj, msg) => write!(f, "(binary {} {} {})", op.token, *obj, *msg),
-            Ast::Block(_, _, statements) => {
+            Ast::Block(params, _, statements) => {
                 write!(f, "(block")?;
+                for param in params {
+                    write!(f, " :{}", param.token)?;
+                }
+                write!(f, " |")?;
                 for statement in statements {
                     write!(f, " {}", statement)?;
                 }
@@ -163,9 +167,14 @@ fn statement(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserEr
                     unreachable!();
                 }
             }
-            _ => {
-                result = expression(tokens);
-            }
+            _ => match expression(tokens) {
+                Ok(ast) => {
+                    result = Ok(ast);
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            },
         },
         None => {
             return Err(ParserError {
@@ -342,7 +351,55 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                 }),
             },
             lexer::Token::LeftBracket => {
+                let mut params = Vec::new();
                 let mut statements = Vec::new();
+                let mut expecting_bar = false;
+                loop {
+                    match tokens.front() {
+                        Some(token) => match token.token {
+                            lexer::Token::Colon => {
+                                expecting_bar = true;
+                                tokens.pop_front();
+                                match tokens.pop_front() {
+                                    Some(token) => match &token.token {
+                                        lexer::Token::Identifier(_) => {
+                                            params.push(token);
+                                            continue;
+                                        }
+                                        _ => {
+                                            return Err(ParserError {
+                                                err: "Expected identifier after :".to_string(),
+                                                line: usize::max_value(),
+                                            });
+                                        }
+                                    },
+                                    None => {
+                                        return Err(ParserError {
+                                            err: "Unexpected end of input while looking for identifier.".to_string(),
+                                            line: usize::max_value(),
+                                        });
+                                    }
+                                }
+                            }
+                            lexer::Token::Bar => {
+                                tokens.pop_front();
+                                break;
+                            }
+                            _ => {
+                                if expecting_bar {
+                                    return Err(ParserError {
+                                        err: "Expected ':' or '|'.".to_string(),
+                                        line: usize::max_value(),
+                                    });
+                                }
+                                break;
+                            }
+                        },
+                        None => {
+                            break;
+                        }
+                    }
+                }
                 loop {
                     match tokens.front() {
                         Some(token) => match token.token {
@@ -368,7 +425,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                     }
                 }
                 expect!(tokens, RightBracket, "Expected ']'.".to_string());
-                Ok(Ast::Block(Vec::new(), Vec::new(), statements))
+                Ok(Ast::Block(params, Vec::new(), statements))
             }
             lexer::Token::LeftParen => match expression(tokens) {
                 Ok(result) => {
@@ -413,7 +470,7 @@ mod tests {
                         assert_eq!(ast.to_string(), $value);
                         assert_eq!(tokens.len(), 0);
                     }
-                    _ => assert!(false),
+                    Err(err) => assert_eq!("parse failed", err.err),
                 },
                 _ => assert!(false),
             }
@@ -506,16 +563,25 @@ mod tests {
             "3 + (4 * 5).",
             "(program (binary + 3:Number (binary * 4:Number 5:Number)))"
         );
-        parsefails!("[1. 2.", "Unexpected end of input.");
-        parse!("[].", "(program (block))");
+        parsefails!("[1. 2.", "Unexpected end of input while looking for ].");
+        parse!("[].", "(program (block |))");
         parse!(
             "[1. 2. 3.].",
-            "(program (block 1:Number 2:Number 3:Number))"
+            "(program (block | 1:Number 2:Number 3:Number))"
         );
         parse!("a := 3.", "(program (assignment a:Identifier 3:Number))");
         parse!(
             "a := 3 * 4 + 5.",
             "(program (assignment a:Identifier (binary + (binary * 3:Number 4:Number) 5:Number)))"
         );
+        parse!(
+            "[:x| x + 1. ].",
+            "(program (block :x | (binary + (lookup x:Identifier) 1:Number)))"
+        );
+        parse!(
+            "[:x : y| x + y. ].",
+            "(program (block :x :y | (binary + (lookup x:Identifier) (lookup y:Identifier))))"
+        );
+        parsefails!("[:x x + 1.].", "Expected ':' or '|'.");
     }
 }
