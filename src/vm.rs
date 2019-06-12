@@ -29,7 +29,9 @@ impl Object {
     pub fn lookup(&self, member: String) -> Option<Value> {
         match self.members.get(&member) {
             Some(v) => match v {
-                Value::Block(proto, address) => Some(Value::Block(proto.clone(), *address)),
+                Value::Block(proto, params, address) => {
+                    Some(Value::Block(proto.clone(), params.to_vec(), *address))
+                }
                 Value::Boolean(proto, b) => Some(Value::Boolean(proto.clone(), *b)),
                 Value::Nil(proto) => Some(Value::Nil(proto.clone())),
                 Value::Number(proto, n) => Some(Value::Number(proto.clone(), *n)),
@@ -61,7 +63,7 @@ impl Object {
 
 #[derive(Clone)]
 pub enum Value {
-    Block(Rc<RefCell<Object>>, usize),
+    Block(Rc<RefCell<Object>>, Vec<String>, usize),
     Boolean(Rc<RefCell<Object>>, bool),
     Nil(Rc<RefCell<Object>>),
     Number(Rc<RefCell<Object>>, f64),
@@ -73,7 +75,7 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Value::Block(_, u) => write!(f, "(lambda @{})", u),
+            Value::Block(_, _, u) => write!(f, "(lambda @{})", u),
             Value::Boolean(_, b) => write!(f, "{}", b),
             Value::Nil(_) => write!(f, "nil"),
             Value::Number(_, n) => write!(f, "{}", n),
@@ -366,10 +368,17 @@ impl VirtualMachine {
                 }
                 "block" => {
                     if split.len() >= 2 {
-                        match split[1].parse::<usize>() {
+                        match split[split.len() - 1].parse::<usize>() {
                             Ok(ip) => {
-                                self.instructions
-                                    .push(Opcode::Const(Value::Block(self.object.clone(), ip)));
+                                let mut params = Vec::new();
+                                for i in 1..split.len() - 1 {
+                                    params.push(split[i].to_string());
+                                }
+                                self.instructions.push(Opcode::Const(Value::Block(
+                                    self.object.clone(),
+                                    params,
+                                    ip,
+                                )));
                             }
                             Err(_) => {
                                 return Err(VMError {
@@ -421,25 +430,11 @@ impl VirtualMachine {
             match &self.instructions[self.ip] {
                 Opcode::Add => apply_op!(self, Number, Number, self.number.clone(), +, Add),
                 Opcode::Const(obj) => match obj {
-                    Value::Block(_, ip) => {
-                        let proto;
-                        match self.callstack.last() {
-                            Some((sp, _)) => match &self.stack[sp - 1] {
-                                Value::Object(obj) => {
-                                    proto = obj.clone();
-                                }
-                                Value::Block(obj, _) => {
-                                    proto = obj.clone();
-                                }
-                                _ => {
-                                    proto = self.global.clone();
-                                }
-                            },
-                            None => {
-                                proto = self.global.clone();
-                            }
-                        }
-                        self.stack.push(Value::Block(proto, *ip));
+                    Value::Block(_, params, ip) => {
+                        // For now we assume the block is run in the global context
+                        // This will be adjusted when the block is actually called.
+                        self.stack
+                            .push(Value::Block(self.global.clone(), params.to_vec(), *ip));
                     }
                     Value::Boolean(proto, b) => {
                         self.stack.push(Value::Boolean(proto.clone(), *b));
@@ -468,7 +463,7 @@ impl VirtualMachine {
                     apply_op!(self, Number, Boolean, self.boolean.clone(), <=, LessEqual)
                 }
                 Opcode::Equal => match self.stack.last() {
-                    Some(Value::Block(_, _)) => apply_eq!(self, Boolean),
+                    Some(Value::Block(_, _, _)) => apply_eq!(self, Boolean),
                     Some(Value::Boolean(_, _)) => apply_eq!(self, Boolean),
                     Some(Value::Number(_, _)) => apply_eq!(self, Number),
                     Some(Value::Object(_)) => match self.stack.pop() {
@@ -548,7 +543,7 @@ impl VirtualMachine {
                     }
                 },
                 Opcode::NotEqual => match self.stack.last() {
-                    Some(Value::Block(_, _)) => apply_neq!(self, Boolean),
+                    Some(Value::Block(_, _, _)) => apply_neq!(self, Boolean),
                     Some(Value::Boolean(_, _)) => apply_neq!(self, Boolean),
                     Some(Value::Number(_, _)) => apply_neq!(self, Number),
                     Some(Value::Object(_)) => match self.stack.pop() {
@@ -645,7 +640,42 @@ impl VirtualMachine {
                     }
                 },
                 Opcode::Call => match self.stack.pop() {
-                    Some(Value::Block(_, ip)) => {
+                    Some(Value::Block(proto, params, ip)) => {
+                        let this;
+                        if params.len() > 0 {
+                            match self.stack.pop() {
+                                Some(value) => {
+                                    this = value;
+                                }
+                                None => {
+                                    return Err(VMError {
+                                        err: "Stack underflow.".to_string(),
+                                        line: usize::max_value(),
+                                    });
+                                }
+                            }
+                            for param in params {
+                                match self.stack.pop() {
+                                    Some(value) => {
+                                        proto.borrow_mut().members.insert(param.to_string(), value);
+                                    }
+                                    None => {
+                                        return Err(VMError {
+                                            err: "Stack underflow.".to_string(),
+                                            line: usize::max_value(),
+                                        });
+                                    }
+                                }
+                            }
+
+                            match this {
+                                Value::Block(obj, _, _) | Value::Object(obj) => {
+                                    proto.borrow_mut().prototype = Some(obj.clone());
+                                }
+                                _ => {}
+                            }
+                            self.stack.push(Value::Object(proto.clone()));
+                        }
                         self.callstack.push((self.stack.len(), self.ip + 1));
                         self.ip = ip;
                         continue;
@@ -680,7 +710,7 @@ impl VirtualMachine {
                 },
                 Opcode::Lookup => match self.stack.pop() {
                     Some(Value::String(_, s)) => match self.stack.last() {
-                        Some(Value::Block(proto, _))
+                        Some(Value::Block(proto, _, _))
                         | Some(Value::Boolean(proto, _))
                         | Some(Value::Nil(proto))
                         | Some(Value::Number(proto, _))

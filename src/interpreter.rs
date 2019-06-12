@@ -88,7 +88,7 @@ fn generate(
                 }
             }
         }
-        parser::Ast::Block(_, _, statements) => {
+        parser::Ast::Block(params, _, statements) => {
             let mut count = 0;
             let mut block_instr = Vec::new();
             for statement in statements {
@@ -101,7 +101,20 @@ fn generate(
             block_instr.push(vm::Opcode::Ret);
             let ip = vm.instructions.len();
             vm.instructions.extend(block_instr);
-            instr.push(vm::Opcode::Const(vm::Value::Block(vm.object.clone(), ip)));
+            let mut block_params = Vec::new();
+            for param in params {
+                match &param.token {
+                    lexer::Token::Identifier(id) => {
+                        block_params.push(id.to_string());
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            instr.push(vm::Opcode::Const(vm::Value::Block(
+                vm.object.clone(),
+                block_params,
+                ip,
+            )));
         }
         parser::Ast::Keyword(obj, msg) => {
             let mut message_name = String::new();
@@ -293,8 +306,6 @@ mod tests {
         eval!("(2 < 3) and: (1 < 3).", Boolean, true);
         eval!("(3 < 2) and: (1 < 3).", Boolean, false);
         eval!("(3 < 2) or: (1 < 3).", Boolean, true);
-        eval!("[1. 2. 3.].", Block, 0);
-        eval!("[1. [2. 3.]. ].", Block, 4);
         eval!("[1. [2. 3.] value. ] value.", Number, 3.0);
         eval!("true ifTrue: [1.].", Number, 1.0);
         eval!("false ifTrue: [1.].", Nil);
@@ -357,6 +368,41 @@ mod tests {
              b := [a.].
              a := 2.
              b value.",
+            Number,
+            2.0
+        );
+
+        eval!(
+            "obj := Object clone.
+             obj set: 'test:' to: [:a|a + 1.].
+             obj test: 1.",
+            Number,
+            2.0
+        );
+
+        eval!(
+            "obj := Object clone.
+             obj set: 'x' to: 1.
+             obj set: 'test:' to: [:a|x + a + 1.].
+             obj test: 1.",
+            Number,
+            3.0
+        );
+
+        eval!(
+            "a := 1.
+             obj := Object clone.
+             obj set: 'b' to: 1.
+             obj set: 'test:' to: [:c|a + b + c.].
+             obj test: 1.",
+            Number,
+            3.0
+        );
+
+        eval!(
+            "obj := Object clone.
+             obj set: 'test:' to: [:a|[a.].].
+             (obj test: 2) value.",
             Number,
             2.0
         );
