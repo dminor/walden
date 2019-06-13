@@ -435,11 +435,12 @@ impl VirtualMachine {
             match &self.instructions[self.ip] {
                 Opcode::Add => apply_op!(self, Number, Number, self.number.clone(), +, Add),
                 Opcode::Const(obj) => match obj {
-                    Value::Block(_, params, ip) => {
-                        // For now we assume the block is run in the global context
-                        // This will be adjusted when the block is actually called.
-                        self.stack
-                            .push(Value::Block(self.global.clone(), params.to_vec(), *ip));
+                    Value::Block(proto, params, ip) => {
+                        self.stack.push(Value::Block(
+                            Rc::new(RefCell::new(Object::new_with_prototype(proto.clone()))),
+                            params.to_vec(),
+                            *ip,
+                        ));
                     }
                     Value::Boolean(proto, b) => {
                         self.stack.push(Value::Boolean(proto.clone(), *b));
@@ -672,7 +673,6 @@ impl VirtualMachine {
                                     }
                                 }
                             }
-
                             match this {
                                 Value::Block(obj, _, _) | Value::Object(obj) => {
                                     proto.borrow_mut().prototype = Some(obj.clone());
@@ -717,7 +717,7 @@ impl VirtualMachine {
                     Some(a) => {
                         self.stack.push(a.clone());
                         self.stack.push(a);
-                    },
+                    }
                     None => {
                         return Err(VMError {
                             err: "Stack underflow.".to_string(),

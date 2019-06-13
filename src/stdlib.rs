@@ -202,6 +202,42 @@ fn object_clone(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     }
 }
 
+fn object_override_with(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Object(obj)) => match vm.stack.pop() {
+            Some(vm::Value::String(_, s)) => match vm.stack.pop() {
+                Some(value) => {
+                    obj.borrow_mut()
+                        .members
+                        .insert(s.to_string(), value.clone());
+                    vm.stack.push(vm::Value::Object(obj.clone()));
+                    Ok(())
+                }
+                None => Err(vm::VMError {
+                    err: "Stack underflow.".to_string(),
+                    line: usize::max_value(),
+                }),
+            },
+            None => Err(vm::VMError {
+                err: "Stack underflow.".to_string(),
+                line: usize::max_value(),
+            }),
+            _ => Err(vm::VMError {
+                err: "override: expects string.".to_string(),
+                line: usize::max_value(),
+            }),
+        },
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+        _ => Err(vm::VMError {
+            err: "Message not understood.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
+
 fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(value) => match value {
@@ -236,6 +272,25 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
         Some(vm::Value::Block(proto, params, ip)) => match vm.stack.pop() {
             Some(vm::Value::String(_, s)) => match vm.stack.pop() {
                 Some(value) => {
+                    let mut ancestor = proto.clone();
+                    loop {
+                        let borrowed = ancestor.borrow().prototype.clone();
+                        match borrowed {
+                            Some(proto) => {
+                                if proto.borrow().members.contains_key(&s.to_string()) {
+                                    proto
+                                        .borrow_mut()
+                                        .members
+                                        .insert(s.to_string(), value.clone());
+                                    return Ok(());
+                                }
+                                ancestor = proto.clone();
+                            }
+                            None => {
+                                break;
+                            }
+                        }
+                    }
                     proto
                         .borrow_mut()
                         .members
@@ -345,6 +400,7 @@ macro_rules! setobject {
 
 pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
     setobject!(vm.object, "clone", object_clone);
+    setobject!(vm.object, "override:with:", object_override_with);
     setobject!(vm.object, "prototype", object_prototype);
     setobject!(vm.object, "set:to:", object_set_to);
     setobject!(vm.object, "value", object_value);
