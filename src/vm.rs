@@ -75,7 +75,7 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Value::Block(_, _, u) => write!(f, "(lambda @{})", u),
+            Value::Block(proto, _, u) => write!(f, "(lambda @{} proto {:p})", u, proto),
             Value::Boolean(_, b) => write!(f, "{}", b),
             Value::Nil(_) => write!(f, "nil"),
             Value::Number(_, n) => write!(f, "{}", n),
@@ -435,13 +435,22 @@ impl VirtualMachine {
             match &self.instructions[self.ip] {
                 Opcode::Add => apply_op!(self, Number, Number, self.number.clone(), +, Add),
                 Opcode::Const(obj) => match obj {
-                    Value::Block(proto, params, ip) => {
-                        self.stack.push(Value::Block(
-                            Rc::new(RefCell::new(Object::new_with_prototype(proto.clone()))),
-                            params.to_vec(),
-                            *ip,
-                        ));
-                    }
+                    Value::Block(proto, params, ip) => match self.stack.last() {
+                        Some(Value::Block(proto, _, _)) => {
+                            self.stack.push(Value::Block(
+                                Rc::new(RefCell::new(Object::new_with_prototype(proto.clone()))),
+                                params.to_vec(),
+                                *ip,
+                            ));
+                        }
+                        _ => {
+                            self.stack.push(Value::Block(
+                                Rc::new(RefCell::new(Object::new_with_prototype(proto.clone()))),
+                                params.to_vec(),
+                                *ip,
+                            ));
+                        }
+                    },
                     Value::Boolean(proto, b) => {
                         self.stack.push(Value::Boolean(proto.clone(), *b));
                     }
