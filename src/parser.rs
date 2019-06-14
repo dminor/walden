@@ -184,7 +184,20 @@ fn statement(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserEr
         }
     }
 
-    expect!(tokens, Dot, "Expected '.'.".to_string());
+    match tokens.front() {
+        Some(token) => match token.token {
+            lexer::Token::RightBracket => {}
+            _ => {
+                expect!(tokens, Dot, "Expected '.'.".to_string());
+            }
+        },
+        None => {
+            return Err(ParserError {
+                err: "Unexpected end of input.".to_string(),
+                line: usize::max_value(),
+            });
+        }
+    }
     result
 }
 
@@ -575,11 +588,11 @@ mod tests {
             "(program (assignment a:Identifier (binary + (binary * 3:Number 4:Number) 5:Number)))"
         );
         parse!(
-            "[:x| x + 1. ].",
+            "[:x| x + 1 ].",
             "(program (block :x | (binary + (lookup x:Identifier) 1:Number)))"
         );
         parse!(
-            "[:x : y| x + y. ].",
+            "[:x : y| x + y ].",
             "(program (block :x :y | (binary + (lookup x:Identifier) (lookup y:Identifier))))"
         );
         parsefails!("[:x x + 1.].", "Expected ':' or '|'.");
