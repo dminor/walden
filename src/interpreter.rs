@@ -1,10 +1,8 @@
 use crate::lexer;
 use crate::parser;
 use crate::vm;
-use std::cell::RefCell;
 use std::error::Error;
 use std::fmt;
-use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct RuntimeError {
@@ -33,7 +31,7 @@ fn generate(
                     vm.string.clone(),
                     s.to_string(),
                 )));
-                instr.push(vm::Opcode::Arg(0));
+                instr.push(vm::Opcode::This);
                 instr.push(vm::Opcode::Dup);
                 instr.push(vm::Opcode::Const(vm::Value::String(
                     vm.string.clone(),
@@ -115,9 +113,7 @@ fn generate(
             }
 
             instr.push(vm::Opcode::Const(vm::Value::Block(
-                Rc::new(RefCell::new(vm::Object::new_with_prototype(
-                    vm.global.clone(),
-                ))),
+                vm.global.clone(),
                 block_params,
                 ip,
             )));
@@ -139,7 +135,7 @@ fn generate(
             instr.push(vm::Opcode::Call);
         }
         parser::Ast::Lookup(id) => {
-            instr.push(vm::Opcode::Arg(0));
+            instr.push(vm::Opcode::This);
             instr.push(vm::Opcode::Const(vm::Value::String(
                 vm.string.clone(),
                 id.token.to_string(),
@@ -340,27 +336,29 @@ mod tests {
             true
         );
         evalfails!("42 prototype value.", "Message not understood.");
+
         eval!(
             "[42 prototype set: 'x' to: true.
-              42 prototype set: 'getX' to: [x.].
+              42 prototype set: 'getX' to: [@x.].
               42 getX.] value.",
             Boolean,
             true
         );
         eval!(
             "[42 prototype set: 'x' to: 1.
-              42 prototype set: 'getX' to: [x.].
-              42 prototype set: 'incX' to: [x := x + 1.].
+              42 prototype set: 'getX' to: [@x.].
+              42 prototype set: 'incX' to: [@x := @x + 1.].
               42 prototype incX incX.
               42 getX.] value.",
             Number,
             3.0
         );
+
         eval!(
             "obj := Object clone.
              obj override: 'x' with: 1.
-             obj override: 'getX' with: [x.].
-             obj override: 'incX' with: [x := x + 1.].
+             obj override: 'getX' with: [@x.].
+             obj override: 'incX' with: [@x := @x + 1.].
              obj incX incX.
              obj getX.",
             Number,
@@ -389,29 +387,28 @@ mod tests {
         eval!(
             "obj := Object clone.
              obj override: 'x' with: 1.
-             obj override: 'test:' with: [:a|x + a + 1.].
+             obj override: 'test:' with: [:a|@x + a + 1.].
              obj test: 1.",
             Number,
             3.0
         );
-        // Temporarily disabled
-        /*
-                eval!(
-                    "obj := Object clone.
-                     obj override: 'test:' with: [:a|[a.].].
-                     (obj test: 2) value.",
-                    Number,
-                    2.0
-                );
 
-                eval!(
-                    "obj := Object clone.
-                     obj override: 'test:' with: [:a|[a.].].
-                     f1 := (obj test: 2).
-                     f1 value.",
-                    Number,
-                    2.0
-                );
-        */
+        eval!(
+            "obj := Object clone.
+             obj override: 'test:' with: [:a|[a.].].
+             (obj test: 2) value.",
+            Number,
+            2.0
+        );
+
+        eval!(
+            "obj := Object clone.
+             obj override: 'test:' with: [:a|[a.].].
+             f1 := (obj test: 2).
+             f2 := (obj test: 3).
+             f1 value.",
+            Number,
+            2.0
+        );
     }
 }

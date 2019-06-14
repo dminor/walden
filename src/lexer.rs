@@ -250,7 +250,7 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                     if c.is_numeric() {
                         valid_identifier = false;
                     }
-                    if !c.is_alphanumeric() {
+                    if !c.is_alphanumeric() && c != '@' {
                         valid_identifier = false;
                     }
                     let mut v = vec![c];
@@ -445,6 +445,7 @@ mod tests {
         scan!("nil", lexer::Token::Nil);
 
         scan!("Valid", lexer::Token::Identifier("Valid".to_string()));
+        scan!("@Valid", lexer::Token::Identifier("@Valid".to_string()));
         scanfails!("2Valid", "Invalid identifier: 2Valid.", 1);
 
         scanfails!("In_valid", "Invalid identifier: _valid.", 1);
