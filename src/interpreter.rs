@@ -1,32 +1,12 @@
 use crate::lexer;
 use crate::parser;
 use crate::vm;
-use std::error::Error;
-use std::fmt;
 
-#[derive(Debug)]
-pub struct RuntimeError {
-    pub err: String,
-    pub line: usize,
-}
-
-impl fmt::Display for RuntimeError {
-    fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "RuntimeError: {}", self.err)
-    }
-}
-
-impl Error for RuntimeError {}
-
-fn generate(
-    ast: &parser::Ast,
-    vm: &mut vm::VirtualMachine,
-    instr: &mut Vec<vm::Opcode>,
-) -> Result<(), RuntimeError> {
+fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine, instr: &mut Vec<vm::Opcode>) {
     match ast {
         parser::Ast::Assignment(id, expr) => match &id.token {
             lexer::Token::Identifier(s) => {
-                generate(expr, vm, instr)?;
+                generate(expr, vm, instr);
                 instr.push(vm::Opcode::Const(vm::Value::String(
                     vm.string.clone(),
                     s.to_string(),
@@ -40,16 +20,11 @@ fn generate(
                 instr.push(vm::Opcode::Lookup);
                 instr.push(vm::Opcode::Call);
             }
-            _ => {
-                return Err(RuntimeError {
-                    err: "Lookup expected identifier.".to_string(),
-                    line: usize::max_value(),
-                });
-            }
+            _ => unreachable!(),
         },
         parser::Ast::Binary(op, lhs, rhs) => {
-            generate(lhs, vm, instr)?;
-            generate(rhs, vm, instr)?;
+            generate(lhs, vm, instr);
+            generate(rhs, vm, instr);
             match op.token {
                 lexer::Token::Plus => {
                     instr.push(vm::Opcode::Add);
@@ -81,19 +56,14 @@ fn generate(
                 lexer::Token::GreaterEqual => {
                     instr.push(vm::Opcode::GreaterEqual);
                 }
-                _ => {
-                    return Err(RuntimeError {
-                        err: "Unsupported operation.".to_string(),
-                        line: usize::max_value(),
-                    });
-                }
+                _ => unreachable!(),
             }
         }
         parser::Ast::Block(params, _, statements) => {
             let mut count = 0;
             let mut block_instr = Vec::new();
             for statement in statements {
-                generate(statement, vm, &mut block_instr)?;
+                generate(statement, vm, &mut block_instr);
                 count += 1;
                 if count != statements.len() {
                     block_instr.push(vm::Opcode::Pop);
@@ -123,9 +93,9 @@ fn generate(
             for i in 0..msg.len() {
                 message_name.push_str(&msg[i].0.token.to_string());
                 message_name.push(':');
-                generate(&msg[msg.len() - i - 1].1, vm, instr)?;
+                generate(&msg[msg.len() - i - 1].1, vm, instr);
             }
-            generate(obj, vm, instr)?;
+            generate(obj, vm, instr);
             instr.push(vm::Opcode::Dup);
             instr.push(vm::Opcode::Const(vm::Value::String(
                 vm.string.clone(),
@@ -145,7 +115,7 @@ fn generate(
         parser::Ast::Program(statements) => {
             let mut count = 0;
             for statement in statements {
-                generate(statement, vm, instr)?;
+                generate(statement, vm, instr);
                 count += 1;
                 if count != statements.len() {
                     instr.push(vm::Opcode::Pop);
@@ -153,7 +123,7 @@ fn generate(
             }
         }
         parser::Ast::Unary(obj, msg) => {
-            generate(obj, vm, instr)?;
+            generate(obj, vm, instr);
             instr.push(vm::Opcode::Dup);
             instr.push(vm::Opcode::Const(vm::Value::String(
                 vm.string.clone(),
@@ -193,20 +163,14 @@ fn generate(
                     true,
                 )));
             }
-            _ => {
-                return Err(RuntimeError {
-                    err: "Unsupported value.".to_string(),
-                    line: usize::max_value(),
-                });
-            }
+            _ => unreachable!(),
         },
     }
-    Ok(())
 }
 
-pub fn eval(vm: &mut vm::VirtualMachine, ast: &parser::Ast) -> Result<vm::Value, RuntimeError> {
+pub fn eval(vm: &mut vm::VirtualMachine, ast: &parser::Ast) -> Result<vm::Value, vm::RuntimeError> {
     let mut instr = Vec::new();
-    generate(ast, vm, &mut instr)?;
+    generate(ast, vm, &mut instr);
     vm.ip = vm.instructions.len();
     vm.instructions.extend(instr);
 
@@ -214,18 +178,13 @@ pub fn eval(vm: &mut vm::VirtualMachine, ast: &parser::Ast) -> Result<vm::Value,
         Ok(()) => match vm.stack.pop() {
             Some(v) => Ok(v),
             None => {
-                return Err(RuntimeError {
+                return Err(vm::RuntimeError {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 });
             }
         },
-        Err(e) => {
-            return Err(RuntimeError {
-                err: e.err,
-                line: usize::max_value(),
-            });
-        }
+        Err(e) => Err(e),
     }
 }
 

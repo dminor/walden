@@ -6,18 +6,18 @@ use std::fmt;
 use std::rc::Rc;
 
 #[derive(Debug)]
-pub struct VMError {
+pub struct RuntimeError {
     pub err: String,
     pub line: usize,
 }
 
-impl fmt::Display for VMError {
+impl fmt::Display for RuntimeError {
     fn fmt<'a>(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VMError: {}", self.err)
+        write!(f, "RuntimeError: {}", self.err)
     }
 }
 
-impl Error for VMError {}
+impl Error for RuntimeError {}
 
 #[derive(Default)]
 pub struct Object {
@@ -122,7 +122,7 @@ pub enum Value {
     Nil(Rc<RefCell<Object>>),
     Number(Rc<RefCell<Object>>, f64),
     Object(Rc<RefCell<Object>>),
-    RustBlock(String, fn(&mut VirtualMachine) -> Result<(), VMError>),
+    RustBlock(String, fn(&mut VirtualMachine) -> Result<(), RuntimeError>),
     String(Rc<RefCell<Object>>, String),
 }
 
@@ -211,7 +211,7 @@ macro_rules! apply_op {
                     $self.stack.push(Value::$out($proto, b $rustop a));
                 }
                 None => {
-                    return Err(VMError {
+                    return Err(RuntimeError {
                         err: "Stack underflow.".to_string(),
                         line: usize::max_value(),
                     });
@@ -220,14 +220,14 @@ macro_rules! apply_op {
                     let mut err = "Unsupported types for ".to_string();
                     err.push_str(&Opcode::$opcode.to_string());
                     err.push('.');
-                    return Err(VMError {
+                    return Err(RuntimeError {
                         err: err,
                         line: usize::max_value(),
                     });
                 }
             },
             None => {
-                return Err(VMError {
+                return Err(RuntimeError {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 });
@@ -236,7 +236,7 @@ macro_rules! apply_op {
                 let mut err = "Unsupported types for ".to_string();
                 err.push_str(&Opcode::$opcode.to_string());
                 err.push('.');
-                return Err(VMError {
+                return Err(RuntimeError {
                     err: err,
                     line: usize::max_value(),
                 });
@@ -255,7 +255,7 @@ macro_rules! apply_eq {
                         .push(Value::Boolean($self.boolean.clone(), b == a));
                 }
                 None => {
-                    return Err(VMError {
+                    return Err(RuntimeError {
                         err: "Stack underflow.".to_string(),
                         line: usize::max_value(),
                     });
@@ -267,7 +267,7 @@ macro_rules! apply_eq {
                 }
             },
             None => {
-                return Err(VMError {
+                return Err(RuntimeError {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 });
@@ -287,7 +287,7 @@ macro_rules! apply_neq {
                         .push(Value::Boolean($self.boolean.clone(), b != a));
                 }
                 None => {
-                    return Err(VMError {
+                    return Err(RuntimeError {
                         err: "Stack underflow.".to_string(),
                         line: usize::max_value(),
                     });
@@ -299,7 +299,7 @@ macro_rules! apply_neq {
                 }
             },
             None => {
-                return Err(VMError {
+                return Err(RuntimeError {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
                 });
@@ -310,7 +310,7 @@ macro_rules! apply_neq {
 }
 
 impl VirtualMachine {
-    pub fn assemble(&mut self, code: &str) -> Result<(), VMError> {
+    pub fn assemble(&mut self, code: &str) -> Result<(), RuntimeError> {
         let mut lineno = 1;
         for line in code.split('\n') {
             let split: Vec<&str> = line.trim().split_whitespace().collect();
@@ -357,7 +357,7 @@ impl VirtualMachine {
                                         )));
                                     }
                                     _ => {
-                                        return Err(VMError {
+                                        return Err(RuntimeError {
                                             err: "Invalid constant.".to_string(),
                                             line: lineno,
                                         });
@@ -366,7 +366,7 @@ impl VirtualMachine {
                             }
                         }
                     } else {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Missing constant argument.".to_string(),
                             line: lineno,
                         });
@@ -417,14 +417,14 @@ impl VirtualMachine {
                                 )));
                             }
                             Err(_) => {
-                                return Err(VMError {
+                                return Err(RuntimeError {
                                     err: "block requires ip.".to_string(),
                                     line: lineno,
                                 });
                             }
                         }
                     } else {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "block requires ip.".to_string(),
                             line: lineno,
                         });
@@ -452,7 +452,7 @@ impl VirtualMachine {
                     self.instructions.push(Opcode::This);
                 }
                 _ => {
-                    return Err(VMError {
+                    return Err(RuntimeError {
                         err: "Invalid instruction.".to_string(),
                         line: lineno,
                     });
@@ -464,7 +464,7 @@ impl VirtualMachine {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<(), VMError> {
+    pub fn run(&mut self) -> Result<(), RuntimeError> {
         while self.ip < self.instructions.len() {
             if self.enable_tracing {
                 println!("{}: {}", self.ip, self.instructions[self.ip]);
@@ -525,7 +525,7 @@ impl VirtualMachine {
                                     .push(Value::Boolean(self.boolean.clone(), Rc::ptr_eq(&a, &b)));
                             }
                             None => {
-                                return Err(VMError {
+                                return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
                                     line: usize::max_value(),
                                 });
@@ -535,7 +535,7 @@ impl VirtualMachine {
                             }
                         },
                         None => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
                                 line: usize::max_value(),
                             });
@@ -548,7 +548,7 @@ impl VirtualMachine {
                                 self.stack.push(Value::Boolean(self.boolean.clone(), true));
                             }
                             None => {
-                                return Err(VMError {
+                                return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
                                     line: usize::max_value(),
                                 });
@@ -558,7 +558,7 @@ impl VirtualMachine {
                             }
                         },
                         None => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
                                 line: usize::max_value(),
                             });
@@ -569,7 +569,7 @@ impl VirtualMachine {
                     Some(Value::RustBlock(_, _)) => match self.stack.pop() {
                         Some(Value::RustBlock(_, _)) => match self.stack.pop() {
                             None => {
-                                return Err(VMError {
+                                return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
                                     line: usize::max_value(),
                                 });
@@ -579,7 +579,7 @@ impl VirtualMachine {
                             }
                         },
                         None => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
                                 line: usize::max_value(),
                             });
@@ -588,7 +588,7 @@ impl VirtualMachine {
                     },
                     Some(Value::String(_, _)) => apply_eq!(self, String),
                     None => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
@@ -607,7 +607,7 @@ impl VirtualMachine {
                                 ));
                             }
                             None => {
-                                return Err(VMError {
+                                return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
                                     line: usize::max_value(),
                                 });
@@ -617,7 +617,7 @@ impl VirtualMachine {
                             }
                         },
                         None => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
                                 line: usize::max_value(),
                             });
@@ -630,7 +630,7 @@ impl VirtualMachine {
                                 self.stack.push(Value::Boolean(self.boolean.clone(), false));
                             }
                             None => {
-                                return Err(VMError {
+                                return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
                                     line: usize::max_value(),
                                 });
@@ -640,7 +640,7 @@ impl VirtualMachine {
                             }
                         },
                         None => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
                                 line: usize::max_value(),
                             });
@@ -652,7 +652,7 @@ impl VirtualMachine {
                     Some(Value::RustBlock(_, _)) => match self.stack.pop() {
                         Some(Value::RustBlock(_, _)) => match self.stack.pop() {
                             None => {
-                                return Err(VMError {
+                                return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
                                     line: usize::max_value(),
                                 });
@@ -662,7 +662,7 @@ impl VirtualMachine {
                             }
                         },
                         None => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
                                 line: usize::max_value(),
                             });
@@ -671,7 +671,7 @@ impl VirtualMachine {
                     },
                     Some(Value::String(_, _)) => apply_neq!(self, String),
                     None => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
@@ -716,7 +716,7 @@ impl VirtualMachine {
                                         proto.borrow_mut().members.insert(param.to_string(), value);
                                     }
                                     None => {
-                                        return Err(VMError {
+                                        return Err(RuntimeError {
                                             err: "Stack underflow.".to_string(),
                                             line: usize::max_value(),
                                         });
@@ -748,13 +748,13 @@ impl VirtualMachine {
                         }
                     }
                     Some(Value::Nil(_)) => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Message not understood.".to_string(),
                             line: usize::max_value(),
                         });
                     }
                     _ => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Attempt to call non-lambda value.".to_string(),
                             line: usize::max_value(),
                         });
@@ -766,7 +766,7 @@ impl VirtualMachine {
                         self.stack.push(a);
                     }
                     None => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
@@ -803,26 +803,26 @@ impl VirtualMachine {
                             self.stack.push(result);
                         }
                         Some(Value::RustBlock(_, _)) => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Rustblock does not support lookup.".to_string(),
                                 line: usize::max_value(),
                             });
                         }
                         None => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
                                 line: usize::max_value(),
                             });
                         }
                     },
                     None => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
                     }
                     _ => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Lookup expects string.".to_string(),
                             line: usize::max_value(),
                         });
@@ -830,7 +830,7 @@ impl VirtualMachine {
                 },
                 Opcode::Pop => match self.stack.pop() {
                     None => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
@@ -843,7 +843,7 @@ impl VirtualMachine {
                         continue; // skip incrementing ip
                     }
                     None => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Call stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
@@ -856,14 +856,14 @@ impl VirtualMachine {
                             self.stack.push(b);
                         }
                         None => {
-                            return Err(VMError {
+                            return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
                                 line: usize::max_value(),
                             });
                         }
                     },
                     None => {
-                        return Err(VMError {
+                        return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
                             line: usize::max_value(),
                         });
