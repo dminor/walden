@@ -410,7 +410,7 @@ macro_rules! setobject {
     }};
 }
 
-pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
+pub fn setup(vm: &mut vm::VirtualMachine) {
     setobject!(vm.object, "clone", object_clone);
     setobject!(vm.object, "override:with:", object_override_with);
     setobject!(vm.object, "prototype", object_prototype);

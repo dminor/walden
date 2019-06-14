@@ -904,7 +904,7 @@ impl VirtualMachine {
             enable_tracing: false,
         };
 
-        stdlib::create_standard_objects(&mut vm);
+        stdlib::setup(&mut vm);
         vm
     }
 }
