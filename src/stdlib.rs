@@ -35,10 +35,10 @@ fn boolean_and(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
 fn boolean_iffalse(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
         Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
-            Some(vm::Value::Block(proto, params, ip)) => {
+            Some(vm::Value::Block(proto, params, locals, ip)) => {
                 if !a {
                     vm.callstack.push((
-                        vm::Value::Block(proto.clone(), params.to_vec(), ip),
+                        vm::Value::Block(proto.clone(), params.to_vec(), locals.to_vec(), ip),
                         vm.stack.len(),
                         vm.ip + 1,
                     ));
@@ -71,10 +71,10 @@ fn boolean_iffalse(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> 
 fn boolean_iftrue(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
         Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
-            Some(vm::Value::Block(proto, params, ip)) => {
+            Some(vm::Value::Block(proto, params, locals, ip)) => {
                 if a {
                     vm.callstack.push((
-                        vm::Value::Block(proto.clone(), params.to_vec(), ip),
+                        vm::Value::Block(proto.clone(), params.to_vec(), locals.to_vec(), ip),
                         vm.stack.len(),
                         vm.ip + 1,
                     ));
@@ -107,18 +107,28 @@ fn boolean_iftrue(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
 fn boolean_iftrue_iffalse(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
         Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
-            Some(vm::Value::Block(t_proto, t_params, t_ip)) => match vm.stack.pop() {
-                Some(vm::Value::Block(f_proto, f_params, f_ip)) => {
+            Some(vm::Value::Block(t_proto, t_params, t_locals, t_ip)) => match vm.stack.pop() {
+                Some(vm::Value::Block(f_proto, f_params, f_locals, f_ip)) => {
                     if a {
                         vm.callstack.push((
-                            vm::Value::Block(t_proto.clone(), t_params.to_vec(), t_ip),
+                            vm::Value::Block(
+                                t_proto.clone(),
+                                t_params.to_vec(),
+                                t_locals.to_vec(),
+                                t_ip,
+                            ),
                             vm.stack.len(),
                             vm.ip + 1,
                         ));
                         vm.ip = t_ip;
                     } else {
                         vm.callstack.push((
-                            vm::Value::Block(f_proto.clone(), f_params.to_vec(), f_ip),
+                            vm::Value::Block(
+                                f_proto.clone(),
+                                f_params.to_vec(),
+                                f_locals.to_vec(),
+                                f_ip,
+                            ),
                             vm.stack.len(),
                             vm.ip + 1,
                         ));
@@ -255,7 +265,7 @@ fn object_override_with(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeEr
 fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
         Some(value) => match value {
-            vm::Value::Block(proto, _, _)
+            vm::Value::Block(proto, _, _, _)
             | vm::Value::Boolean(proto, _)
             | vm::Value::Nil(proto)
             | vm::Value::Number(proto, _)
@@ -283,7 +293,7 @@ fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError>
 
 fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
-        Some(vm::Value::Block(proto, _, _)) => match vm.stack.pop() {
+        Some(vm::Value::Block(proto, _, _, _)) => match vm.stack.pop() {
             Some(vm::Value::String(_, s)) => match vm.stack.pop() {
                 Some(value) => {
                     proto.borrow_mut().set_to(s.to_string(), value);
@@ -342,11 +352,15 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
 
 fn block_disassemble(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
-        Some(vm::Value::Block(_, params, ip)) => {
+        Some(vm::Value::Block(_, params, locals, ip)) => {
             let mut ip = ip;
             print!("@{} [", ip);
             for param in params {
                 print!(" {}", param);
+            }
+            print!(" | ");
+            for local in locals {
+                print!(" {}", local);
             }
             println!(" ]");
             loop {
@@ -377,9 +391,9 @@ fn block_disassemble(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError
 fn block_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
         Some(value) => match value {
-            vm::Value::Block(proto, params, ip) => {
+            vm::Value::Block(proto, params, locals, ip) => {
                 vm.callstack.push((
-                    vm::Value::Block(proto.clone(), params.to_vec(), ip),
+                    vm::Value::Block(proto.clone(), params.to_vec(), locals.to_vec(), ip),
                     vm.stack.len(),
                     vm.ip + 1,
                 ));

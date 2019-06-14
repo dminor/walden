@@ -15,7 +15,7 @@ value          -> IDENTIFIER | NUMBER | STRING | "false" | "true" | "nil"
                   | "(" expression ")"
                   | "[" (statement)* "]"
                   | "[" (":" IDENTIFIER)+ "|" (statement)* "]"
-                  | "[" (":" IDENTIFIER)* "|" (IDENTIFIER)* "|" (statement)* "]"
+                  | "[" (":" IDENTIFIER)* "|" "|" (IDENTIFIER)* "|" (statement)* "]"
 */
 
 pub enum Ast {
@@ -36,10 +36,14 @@ impl fmt::Display for Ast {
                 write!(f, "(assignment {}:Identifier {})", id.token, *expr)
             }
             Ast::Binary(op, obj, msg) => write!(f, "(binary {} {} {})", op.token, *obj, *msg),
-            Ast::Block(params, _, statements) => {
+            Ast::Block(params, locals, statements) => {
                 write!(f, "(block")?;
                 for param in params {
                     write!(f, " :{}", param.token)?;
+                }
+                write!(f, " |")?;
+                for local in locals {
+                    write!(f, " {}", local.token)?;
                 }
                 write!(f, " |")?;
                 for statement in statements {
@@ -365,6 +369,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
             },
             lexer::Token::LeftBracket => {
                 let mut params = Vec::new();
+                let mut locals = Vec::new();
                 let mut statements = Vec::new();
                 let mut expecting_bar = false;
                 loop {
@@ -413,6 +418,47 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                         }
                     }
                 }
+                match tokens.front() {
+                    Some(token) => match token.token {
+                        lexer::Token::Bar => {
+                            tokens.pop_front();
+                            loop {
+                                match tokens.pop_front() {
+                                    Some(token) => match &token.token {
+                                        lexer::Token::Identifier(_) => {
+                                            println!("found local: {}", token.token);
+                                            locals.push(token);
+                                            continue;
+                                        }
+                                        lexer::Token::Bar => {
+                                            break;
+                                        }
+                                        _ => {
+                                            return Err(ParserError {
+                                                err: "Expected identifier.".to_string(),
+                                                line: usize::max_value(),
+                                            });
+                                        }
+                                    },
+                                    None => {
+                                        return Err(ParserError {
+                                            err: "Unexpected end of input while looking for '|'."
+                                                .to_string(),
+                                            line: usize::max_value(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    },
+                    None => {
+                        return Err(ParserError {
+                            err: "Unexpected end of input".to_string(),
+                            line: usize::max_value(),
+                        });
+                    }
+                }
                 loop {
                     match tokens.front() {
                         Some(token) => match token.token {
@@ -438,7 +484,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                     }
                 }
                 expect!(tokens, RightBracket, "Expected ']'.".to_string());
-                Ok(Ast::Block(params, Vec::new(), statements))
+                Ok(Ast::Block(params, locals, statements))
             }
             lexer::Token::LeftParen => match expression(tokens) {
                 Ok(result) => {
@@ -577,10 +623,10 @@ mod tests {
             "(program (binary + 3:Number (binary * 4:Number 5:Number)))"
         );
         parsefails!("[1. 2.", "Unexpected end of input while looking for ].");
-        parse!("[].", "(program (block |))");
+        parse!("[].", "(program (block | |))");
         parse!(
             "[1. 2. 3.].",
-            "(program (block | 1:Number 2:Number 3:Number))"
+            "(program (block | | 1:Number 2:Number 3:Number))"
         );
         parse!("a := 3.", "(program (assignment a:Identifier 3:Number))");
         parse!(
@@ -589,12 +635,20 @@ mod tests {
         );
         parse!(
             "[:x| x + 1 ].",
-            "(program (block :x | (binary + (lookup x:Identifier) 1:Number)))"
+            "(program (block :x | | (binary + (lookup x:Identifier) 1:Number)))"
         );
         parse!(
             "[:x : y| x + y ].",
-            "(program (block :x :y | (binary + (lookup x:Identifier) (lookup y:Identifier))))"
+            "(program (block :x :y | | (binary + (lookup x:Identifier) (lookup y:Identifier))))"
         );
         parsefails!("[:x x + 1.].", "Expected ':' or '|'.");
+        parse!(
+            "[:x||| x + 1 ].",
+            "(program (block :x | | (binary + (lookup x:Identifier) 1:Number)))"
+        );
+        parse!(
+            "[:x||y| x + y + 1 ].",
+            "(program (block :x | y | (binary + (binary + (lookup x:Identifier) (lookup y:Identifier)) 1:Number)))"
+        );
     }
 }

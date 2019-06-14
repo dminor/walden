@@ -59,7 +59,7 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine, instr: &mut Vec<vm::
                 _ => unreachable!(),
             }
         }
-        parser::Ast::Block(params, _, statements) => {
+        parser::Ast::Block(params, locals, statements) => {
             let mut count = 0;
             let mut block_instr = Vec::new();
             for statement in statements {
@@ -81,10 +81,20 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine, instr: &mut Vec<vm::
                     _ => unreachable!(),
                 }
             }
+            let mut block_locals = Vec::new();
+            for local in locals {
+                match &local.token {
+                    lexer::Token::Identifier(id) => {
+                        block_locals.push(id.to_string());
+                    }
+                    _ => unreachable!(),
+                }
+            }
 
             instr.push(vm::Opcode::Const(vm::Value::Block(
                 vm.block.clone(),
                 block_params,
+                block_locals,
                 ip,
             )));
         }
@@ -367,6 +377,28 @@ mod tests {
              f1 value.",
             Number,
             2.0
+        );
+
+        eval!(
+            "obj := Object clone.
+             obj override: 'test:' with: [:a||y|[y := a. y.]].
+             f1 := (obj test: 2).
+             f2 := (obj test: 3).
+             f1 value.",
+            Number,
+            2.0
+        );
+
+        eval!(
+            "obj := Object clone.
+             obj override: 'x' with: 1.
+             obj override: 'incX' with: [@x := @x + 1].
+             obj override: 'test:' with: [:a||y|[y := a. y + @x.]].
+             f := (obj test: 2).
+             obj incX.
+             f value.",
+            Number,
+            4.0
         );
     }
 }
