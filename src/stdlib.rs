@@ -290,7 +290,7 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
                     if let Some(this) = proto.borrow().lookup("self".to_string()) {
                         vm.stack.push(this);
                     } else {
-                        vm.stack.push(vm::Value::Object(vm.global.clone()));
+                        vm.stack.push(vm::Value::Object(vm.block.clone()));
                     }
                     Ok(())
                 }
@@ -340,7 +340,41 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     }
 }
 
-fn object_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+fn block_disassemble(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Block(_, params, ip)) => {
+            let mut ip = ip;
+            print!("@{} [", ip);
+            for param in params {
+                print!(" {}", param);
+            }
+            println!(" ]");
+            loop {
+                println!("  {}: {}", ip, vm.instructions[ip]);
+                match vm.instructions[ip] {
+                    vm::Opcode::Ret => {
+                        break;
+                    }
+                    _ => {
+                        ip += 1;
+                    }
+                }
+            }
+            vm.stack.push(vm::Value::Nil(vm.object.clone()));
+            Ok(())
+        }
+        None => Err(vm::VMError {
+            err: "Stack underflow.".to_string(),
+            line: usize::max_value(),
+        }),
+        _ => Err(vm::VMError {
+            err: "Message not understood.".to_string(),
+            line: usize::max_value(),
+        }),
+    }
+}
+
+fn block_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
     match vm.stack.pop() {
         Some(value) => match value {
             vm::Value::Block(proto, params, ip) => {
@@ -350,23 +384,6 @@ fn object_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::VMError> {
                     vm.ip + 1,
                 ));
                 vm.ip = ip;
-                Ok(())
-            }
-            vm::Value::Boolean(proto, b) => {
-                vm.stack.push(vm::Value::Boolean(proto.clone(), b));
-                Ok(())
-            }
-            vm::Value::Nil(proto) => {
-                vm.stack.push(vm::Value::Nil(proto.clone()));
-                Ok(())
-            }
-            vm::Value::Number(proto, n) => {
-                vm.stack.push(vm::Value::Number(proto.clone(), n));
-                Ok(())
-            }
-            vm::Value::String(proto, s) => {
-                vm.stack
-                    .push(vm::Value::String(proto.clone(), s.to_string()));
                 Ok(())
             }
             _ => Err(vm::VMError {
@@ -398,7 +415,8 @@ pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
     setobject!(vm.object, "override:with:", object_override_with);
     setobject!(vm.object, "prototype", object_prototype);
     setobject!(vm.object, "set:to:", object_set_to);
-    setobject!(vm.object, "value", object_value);
+    setobject!(vm.block, "disassemble", block_disassemble);
+    setobject!(vm.block, "value", block_value);
     setobject!(vm.boolean, "and:", boolean_and);
     setobject!(vm.boolean, "ifFalse:", boolean_iffalse);
     setobject!(vm.boolean, "ifTrue:ifFalse:", boolean_iftrue_iffalse);
@@ -406,5 +424,5 @@ pub fn create_standard_objects(vm: &mut vm::VirtualMachine) {
     setobject!(vm.boolean, "not", boolean_not);
     setobject!(vm.boolean, "or:", boolean_or);
 
-    setobject!(vm.global, "Object", vm::Value::Object(vm.object.clone()));
+    setobject!(vm.block, "Object", vm::Value::Object(vm.object.clone()));
 }

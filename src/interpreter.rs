@@ -113,7 +113,7 @@ fn generate(
             }
 
             instr.push(vm::Opcode::Const(vm::Value::Block(
-                vm.global.clone(),
+                vm.block.clone(),
                 block_params,
                 ip,
             )));
@@ -328,7 +328,6 @@ mod tests {
               42 test.] value.",
             "Attempt to call non-lambda value."
         );
-        eval!("42 value.", Number, 42.0);
         eval!(
             "[42 prototype set: 'value' to: [true.].
               42 value.] value.",

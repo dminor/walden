@@ -195,11 +195,10 @@ pub struct VirtualMachine {
 
     // Prototypes for builtin objects
     pub object: Rc<RefCell<Object>>,
+    pub block: Rc<RefCell<Object>>,
     pub boolean: Rc<RefCell<Object>>,
     pub number: Rc<RefCell<Object>>,
     pub string: Rc<RefCell<Object>>,
-
-    pub global: Rc<RefCell<Object>>,
 
     pub enable_tracing: bool,
 }
@@ -705,7 +704,7 @@ impl VirtualMachine {
                                 proto
                                     .borrow_mut()
                                     .members
-                                    .insert("self".to_string(), Value::Object(self.global.clone()));
+                                    .insert("self".to_string(), Value::Object(self.block.clone()));
                             }
                         }
                         let proto =
@@ -875,7 +874,7 @@ impl VirtualMachine {
                         self.stack.push(obj.clone());
                     }
                     None => {
-                        self.stack.push(Value::Object(self.global.clone()));
+                        self.stack.push(Value::Object(self.block.clone()));
                     }
                 },
             }
@@ -898,10 +897,10 @@ impl VirtualMachine {
             ip: 0,
             stack: Vec::new(),
             object: object.clone(),
+            block: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             boolean: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             number: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             string: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
-            global: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             enable_tracing: false,
         };
 
