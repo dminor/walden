@@ -196,7 +196,6 @@ pub struct VirtualMachine {
     // Prototypes for builtin objects
     pub object: Rc<RefCell<Object>>,
     pub boolean: Rc<RefCell<Object>>,
-    pub nil: Rc<RefCell<Object>>,
     pub number: Rc<RefCell<Object>>,
     pub string: Rc<RefCell<Object>>,
 
@@ -334,7 +333,7 @@ impl VirtualMachine {
                                 .push(Opcode::Const(Value::Boolean(self.boolean.clone(), false)));
                         } else if split[1] == "nil" {
                             self.instructions
-                                .push(Opcode::Const(Value::Nil(self.nil.clone())));
+                                .push(Opcode::Const(Value::Nil(self.object.clone())));
                         } else if split[1] == "true" {
                             self.instructions
                                 .push(Opcode::Const(Value::Boolean(self.boolean.clone(), true)));
@@ -787,7 +786,7 @@ impl VirtualMachine {
                                     result = v;
                                 }
                                 None => {
-                                    result = Value::Nil(self.nil.clone());
+                                    result = Value::Nil(self.object.clone());
                                 }
                             }
                             self.stack.push(result);
@@ -799,7 +798,7 @@ impl VirtualMachine {
                                     result = v;
                                 }
                                 None => {
-                                    result = Value::Nil(self.nil.clone());
+                                    result = Value::Nil(self.object.clone());
                                 }
                             }
                             self.stack.push(result);
@@ -900,7 +899,6 @@ impl VirtualMachine {
             stack: Vec::new(),
             object: object.clone(),
             boolean: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
-            nil: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             number: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             string: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             global: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),

@@ -176,7 +176,7 @@ fn generate(
                 )));
             }
             lexer::Token::Nil => {
-                instr.push(vm::Opcode::Const(vm::Value::Nil(vm.nil.clone())));
+                instr.push(vm::Opcode::Const(vm::Value::Nil(vm.object.clone())));
             }
             lexer::Token::Number(n) => {
                 instr.push(vm::Opcode::Const(vm::Value::Number(vm.number.clone(), *n)));
