@@ -443,5 +443,17 @@ mod tests {
             Number,
             2.0
         );
+
+        eval!(
+            "x := 10.
+             sum := 0.
+             [x > 0] whileTrue: [
+                 sum := sum + x.
+                 x := x - 1.
+             ].
+             sum.",
+            Number,
+            55.0
+        );
     }
 }

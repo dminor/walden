@@ -209,6 +209,8 @@ pub struct VirtualMachine {
 
     pub line: usize,
     pub col: usize,
+
+    pub halt_on_ret: bool,
 }
 
 macro_rules! apply_op {
@@ -922,6 +924,9 @@ impl VirtualMachine {
                 Opcode::Ret => match self.callstack.pop() {
                     Some((_, _, ip)) => {
                         self.ip = ip;
+                        if self.halt_on_ret {
+                            break;
+                        }
                         continue; // skip incrementing ip
                     }
                     None => {
@@ -993,6 +998,7 @@ impl VirtualMachine {
             enable_tracing: false,
             line: usize::max_value(),
             col: usize::max_value(),
+            halt_on_ret: false,
         };
 
         stdlib::setup(&mut vm);

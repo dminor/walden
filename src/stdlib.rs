@@ -290,6 +290,77 @@ fn block_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     }
 }
 
+fn block_whiletrue(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Block(cond_proto, cond_params, cond_locals, cond_ip)) => {
+            match vm.stack.pop() {
+                Some(vm::Value::Block(block_proto, block_params, block_locals, block_ip)) => {
+                    let start_ip = vm.ip;
+                    loop {
+                        vm.callstack.push((
+                            vm::Value::Block(
+                                cond_proto.clone(),
+                                cond_params.to_vec(),
+                                cond_locals.to_vec(),
+                                cond_ip,
+                            ),
+                            vm.stack.len(),
+                            vm.ip + 1,
+                        ));
+                        vm.ip = cond_ip;
+                        vm.halt_on_ret = true;
+                        match vm.run() {
+                            Ok(()) => {}
+                            Err(e) => {
+                                vm.halt_on_ret = false;
+                                return Err(e);
+                            }
+                        }
+                        match vm.stack.pop() {
+                            Some(vm::Value::Boolean(_, b)) => {
+                                if !b {
+                                    break;
+                                }
+                            }
+                            _ => {
+                                vm.halt_on_ret = false;
+                                return err!(vm, "whileTrue: block should return boolean.");
+                            }
+                        }
+                        vm.callstack.push((
+                            vm::Value::Block(
+                                block_proto.clone(),
+                                block_params.to_vec(),
+                                block_locals.to_vec(),
+                                block_ip,
+                            ),
+                            vm.stack.len(),
+                            vm.ip + 1,
+                        ));
+                        vm.ip = block_ip;
+                        match vm.run() {
+                            Ok(()) => {}
+                            Err(e) => {
+                                vm.halt_on_ret = false;
+                                return Err(e);
+                            }
+                        }
+                        vm.stack.pop();
+                    }
+                    vm.halt_on_ret = false;
+                    vm.stack.push(vm::Value::Nil(vm.object.clone()));
+                    vm.ip = start_ip;
+                    Ok(())
+                }
+                None => err!(vm, "Stack underflow."),
+                _ => err!(vm, "whileTrue: expects block."),
+            }
+        }
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
+    }
+}
+
 macro_rules! setobject {
     ($target:expr, $name:expr, $fn:ident) => {{
         $target.borrow_mut().members.insert(
@@ -309,6 +380,7 @@ pub fn setup(vm: &mut vm::VirtualMachine) {
     setobject!(vm.object, "set:to:", object_set_to);
     setobject!(vm.block, "disassemble", block_disassemble);
     setobject!(vm.block, "value", block_value);
+    setobject!(vm.block, "whileTrue:", block_whiletrue);
     setobject!(vm.boolean, "and:", boolean_and);
     setobject!(vm.boolean, "ifFalse:", boolean_iffalse);
     setobject!(vm.boolean, "ifTrue:ifFalse:", boolean_iftrue_iffalse);

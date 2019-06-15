@@ -1,0 +1,13 @@
+"Calculate factorial."
+fact := Object clone.
+fact override: 'startAt:' with: [ :x|
+    | prod |
+    prod := 1.
+    [x > 0] whileTrue: [
+        prod := prod * x.
+        x := x - 1.
+    ].
+    prod.
+].
+
+fact startAt: 10.
