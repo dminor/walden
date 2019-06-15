@@ -2,6 +2,16 @@ use crate::vm;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+macro_rules! err {
+    ($vm: ident, $err:expr) => {{
+        Err(vm::RuntimeError {
+            err: $err.to_string(),
+            line: $vm.line,
+            col: $vm.col,
+        })
+    }};
+}
+
 fn boolean_and(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
         Some(vm::Value::Boolean(_, a)) => match vm.stack.pop() {
@@ -9,27 +19,11 @@ fn boolean_and(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
                 vm.stack.push(vm::Value::Boolean(proto.clone(), a && b));
                 Ok(())
             }
-            None => Err(vm::RuntimeError {
-                err: "Stack underflow.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
-            _ => Err(vm::RuntimeError {
-                err: "and: expects boolean.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "and: expects boolean."),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -52,27 +46,11 @@ fn boolean_iffalse(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> 
                 }
                 Ok(())
             }
-            None => Err(vm::RuntimeError {
-                err: "Stack underflow.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
-            _ => Err(vm::RuntimeError {
-                err: "ifFalse: expects block.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "ifFalse: expects block."),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -92,27 +70,11 @@ fn boolean_iftrue(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
                 }
                 Ok(())
             }
-            None => Err(vm::RuntimeError {
-                err: "Stack underflow.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
-            _ => Err(vm::RuntimeError {
-                err: "ifTrue: expects block.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "ifTrue: expects block."),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -148,38 +110,14 @@ fn boolean_iftrue_iffalse(vm: &mut vm::VirtualMachine) -> Result<(), vm::Runtime
                     }
                     Ok(())
                 }
-                None => Err(vm::RuntimeError {
-                    err: "Stack underflow.".to_string(),
-                    line: vm.line,
-                    col: vm.col,
-                }),
-                _ => Err(vm::RuntimeError {
-                    err: "ifTrue: expects block.".to_string(),
-                    line: vm.line,
-                    col: vm.col,
-                }),
+                None => err!(vm, "Stack underflow."),
+                _ => err!(vm, "ifTrue: expects block."),
             },
-            None => Err(vm::RuntimeError {
-                err: "Stack underflow.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
-            _ => Err(vm::RuntimeError {
-                err: "ifFalse: expects block.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "ifFalse: expects block."),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -189,16 +127,8 @@ fn boolean_not(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
             vm.stack.push(vm::Value::Boolean(proto.clone(), !b));
             Ok(())
         }
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -209,27 +139,11 @@ fn boolean_or(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
                 vm.stack.push(vm::Value::Boolean(proto.clone(), a || b));
                 Ok(())
             }
-            None => Err(vm::RuntimeError {
-                err: "Stack underflow.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
-            _ => Err(vm::RuntimeError {
-                err: "or: expects boolean.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "or: expects boolean."),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -241,16 +155,8 @@ fn object_clone(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
             ))));
             Ok(())
         }
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -263,33 +169,13 @@ fn object_override_with(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeEr
                     vm.stack.push(vm::Value::Object(obj.clone()));
                     Ok(())
                 }
-                None => Err(vm::RuntimeError {
-                    err: "Stack underflow.".to_string(),
-                    line: vm.line,
-                    col: vm.col,
-                }),
+                None => err!(vm, "Stack underflow."),
             },
-            None => Err(vm::RuntimeError {
-                err: "Stack underflow.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
-            _ => Err(vm::RuntimeError {
-                err: "override: expects string.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "override: expects string."),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -315,11 +201,7 @@ fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError>
             }
             vm::Value::RustBlock(_, _) => unreachable!(),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
     }
 }
 
@@ -336,22 +218,10 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
                     }
                     Ok(())
                 }
-                None => Err(vm::RuntimeError {
-                    err: "Stack underflow.".to_string(),
-                    line: vm.line,
-                    col: vm.col,
-                }),
+                None => err!(vm, "Stack underflow."),
             },
-            None => Err(vm::RuntimeError {
-                err: "Stack underflow.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
-            _ => Err(vm::RuntimeError {
-                err: "set: expects string.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "set: expects string."),
         },
         Some(vm::Value::Object(obj)) => match vm.stack.pop() {
             Some(vm::Value::String(_, s)) => match vm.stack.pop() {
@@ -360,33 +230,13 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
                     vm.stack.push(vm::Value::Object(obj.clone()));
                     Ok(())
                 }
-                None => Err(vm::RuntimeError {
-                    err: "Stack underflow.".to_string(),
-                    line: vm.line,
-                    col: vm.col,
-                }),
+                None => err!(vm, "Stack underflow."),
             },
-            None => Err(vm::RuntimeError {
-                err: "Stack underflow.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
-            _ => Err(vm::RuntimeError {
-                err: "set: expects string.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "set: expects string."),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -417,16 +267,8 @@ fn block_disassemble(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError
             vm.stack.push(vm::Value::Nil(vm.object.clone()));
             Ok(())
         }
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
-        _ => Err(vm::RuntimeError {
-            err: "Message not understood.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
     }
 }
 
@@ -442,17 +284,9 @@ fn block_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
                 vm.ip = ip;
                 Ok(())
             }
-            _ => Err(vm::RuntimeError {
-                err: "Message not understood.".to_string(),
-                line: vm.line,
-                col: vm.col,
-            }),
+            _ => err!(vm, "Message not understood."),
         },
-        None => Err(vm::RuntimeError {
-            err: "Stack underflow.".to_string(),
-            line: vm.line,
-            col: vm.col,
-        }),
+        None => err!(vm, "Stack underflow."),
     }
 }
 
