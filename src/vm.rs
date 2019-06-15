@@ -9,6 +9,7 @@ use std::rc::Rc;
 pub struct RuntimeError {
     pub err: String,
     pub line: usize,
+    pub col: usize,
 }
 
 impl fmt::Display for RuntimeError {
@@ -160,6 +161,7 @@ pub enum Opcode {
     Lookup,
     Pop,
     Ret,
+    Srcpos(usize, usize),
     Swap,
     This,
 }
@@ -183,6 +185,7 @@ impl fmt::Display for Opcode {
             Opcode::Lookup => write!(f, "lookup"),
             Opcode::Pop => write!(f, "pop"),
             Opcode::Ret => write!(f, "ret"),
+            Opcode::Srcpos(line, col) => write!(f, "srcpos {} {}", line, col),
             Opcode::Swap => write!(f, "swap"),
             Opcode::This => write!(f, "this"),
         }
@@ -204,6 +207,9 @@ pub struct VirtualMachine {
     pub string: Rc<RefCell<Object>>,
 
     pub enable_tracing: bool,
+
+    pub line: usize,
+    pub col: usize,
 }
 
 macro_rules! apply_op {
@@ -216,7 +222,8 @@ macro_rules! apply_op {
                 None => {
                     return Err(RuntimeError {
                         err: "Stack underflow.".to_string(),
-                        line: usize::max_value(),
+                        line: $self.line,
+                        col: $self.col,
                     });
                 }
                 _ => {
@@ -225,14 +232,16 @@ macro_rules! apply_op {
                     err.push('.');
                     return Err(RuntimeError {
                         err: err,
-                        line: usize::max_value(),
+                        line: $self.line,
+                        col: $self.col,
                     });
                 }
             },
             None => {
                 return Err(RuntimeError {
                     err: "Stack underflow.".to_string(),
-                    line: usize::max_value(),
+                    line: $self.line,
+                    col: $self.col,
                 });
             }
             _ => {
@@ -241,7 +250,8 @@ macro_rules! apply_op {
                 err.push('.');
                 return Err(RuntimeError {
                     err: err,
-                    line: usize::max_value(),
+                    line: $self.line,
+                    col: $self.col,
                 });
             }
         }
@@ -260,7 +270,8 @@ macro_rules! apply_eq {
                 None => {
                     return Err(RuntimeError {
                         err: "Stack underflow.".to_string(),
-                        line: usize::max_value(),
+                        line: $self.line,
+                        col: $self.col,
                     });
                 }
                 _ => {
@@ -272,7 +283,8 @@ macro_rules! apply_eq {
             None => {
                 return Err(RuntimeError {
                     err: "Stack underflow.".to_string(),
-                    line: usize::max_value(),
+                    line: $self.line,
+                    col: $self.col,
                 });
             }
             _ => unreachable!(),
@@ -292,7 +304,8 @@ macro_rules! apply_neq {
                 None => {
                     return Err(RuntimeError {
                         err: "Stack underflow.".to_string(),
-                        line: usize::max_value(),
+                        line: $self.line,
+                        col: $self.col,
                     });
                 }
                 _ => {
@@ -304,7 +317,8 @@ macro_rules! apply_neq {
             None => {
                 return Err(RuntimeError {
                     err: "Stack underflow.".to_string(),
-                    line: usize::max_value(),
+                    line: $self.line,
+                    col: $self.col,
                 });
             }
             _ => unreachable!(),
@@ -363,6 +377,7 @@ impl VirtualMachine {
                                         return Err(RuntimeError {
                                             err: "Invalid constant.".to_string(),
                                             line: lineno,
+                                            col: 1,
                                         });
                                     }
                                 }
@@ -372,6 +387,7 @@ impl VirtualMachine {
                         return Err(RuntimeError {
                             err: "Missing constant argument.".to_string(),
                             line: lineno,
+                            col: 1,
                         });
                     }
                 }
@@ -424,6 +440,7 @@ impl VirtualMachine {
                                 return Err(RuntimeError {
                                     err: "block requires ip.".to_string(),
                                     line: lineno,
+                                    col: 1,
                                 });
                             }
                         }
@@ -431,6 +448,7 @@ impl VirtualMachine {
                         return Err(RuntimeError {
                             err: "block requires ip.".to_string(),
                             line: lineno,
+                            col: 1,
                         });
                     }
                 }
@@ -449,6 +467,37 @@ impl VirtualMachine {
                 "ret" => {
                     self.instructions.push(Opcode::Ret);
                 }
+                "srcpos" => {
+                    if split.len() >= 3 {
+                        match split[1].parse::<usize>() {
+                            Ok(line) => match split[2].parse::<usize>() {
+                                Ok(col) => {
+                                    self.instructions.push(Opcode::Srcpos(line, col));
+                                }
+                                _ => {
+                                    return Err(RuntimeError {
+                                        err: "srcpos invalid col.".to_string(),
+                                        line: lineno,
+                                        col: 1,
+                                    });
+                                }
+                            },
+                            _ => {
+                                return Err(RuntimeError {
+                                    err: "srcpos invalid line.".to_string(),
+                                    line: lineno,
+                                    col: 1,
+                                });
+                            }
+                        }
+                    } else {
+                        return Err(RuntimeError {
+                            err: "srcpos requires line and col.".to_string(),
+                            line: lineno,
+                            col: 1,
+                        });
+                    }
+                }
                 "swap" => {
                     self.instructions.push(Opcode::Swap);
                 }
@@ -459,6 +508,7 @@ impl VirtualMachine {
                     return Err(RuntimeError {
                         err: "Invalid instruction.".to_string(),
                         line: lineno,
+                        col: 1,
                     });
                 }
             }
@@ -533,7 +583,8 @@ impl VirtualMachine {
                             None => {
                                 return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
-                                    line: usize::max_value(),
+                                    line: self.line,
+                                    col: self.col,
                                 });
                             }
                             _ => {
@@ -543,7 +594,8 @@ impl VirtualMachine {
                         None => {
                             return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                         _ => unreachable!(),
@@ -556,7 +608,8 @@ impl VirtualMachine {
                             None => {
                                 return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
-                                    line: usize::max_value(),
+                                    line: self.line,
+                                    col: self.col,
                                 });
                             }
                             _ => {
@@ -566,7 +619,8 @@ impl VirtualMachine {
                         None => {
                             return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                         _ => unreachable!(),
@@ -577,7 +631,8 @@ impl VirtualMachine {
                             None => {
                                 return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
-                                    line: usize::max_value(),
+                                    line: self.line,
+                                    col: self.col,
                                 });
                             }
                             _ => {
@@ -587,7 +642,8 @@ impl VirtualMachine {
                         None => {
                             return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                         _ => unreachable!(),
@@ -596,7 +652,8 @@ impl VirtualMachine {
                     None => {
                         return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                 },
@@ -615,7 +672,8 @@ impl VirtualMachine {
                             None => {
                                 return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
-                                    line: usize::max_value(),
+                                    line: self.line,
+                                    col: self.col,
                                 });
                             }
                             _ => {
@@ -625,7 +683,8 @@ impl VirtualMachine {
                         None => {
                             return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                         _ => unreachable!(),
@@ -638,7 +697,8 @@ impl VirtualMachine {
                             None => {
                                 return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
-                                    line: usize::max_value(),
+                                    line: self.line,
+                                    col: self.col,
                                 });
                             }
                             _ => {
@@ -648,7 +708,8 @@ impl VirtualMachine {
                         None => {
                             return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                         _ => {
@@ -660,7 +721,8 @@ impl VirtualMachine {
                             None => {
                                 return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
-                                    line: usize::max_value(),
+                                    line: self.line,
+                                    col: self.col,
                                 });
                             }
                             _ => {
@@ -670,7 +732,8 @@ impl VirtualMachine {
                         None => {
                             return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                         _ => unreachable!(),
@@ -679,7 +742,8 @@ impl VirtualMachine {
                     None => {
                         return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                 },
@@ -723,7 +787,8 @@ impl VirtualMachine {
                                 None => {
                                     return Err(RuntimeError {
                                         err: "Stack underflow.".to_string(),
-                                        line: usize::max_value(),
+                                        line: self.line,
+                                        col: self.col,
                                     });
                                 }
                             }
@@ -760,13 +825,15 @@ impl VirtualMachine {
                     Some(Value::Nil(_)) => {
                         return Err(RuntimeError {
                             err: "Message not understood.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                     _ => {
                         return Err(RuntimeError {
                             err: "Attempt to call non-lambda value.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                 },
@@ -778,7 +845,8 @@ impl VirtualMachine {
                     None => {
                         return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                 },
@@ -815,26 +883,30 @@ impl VirtualMachine {
                         Some(Value::RustBlock(_, _)) => {
                             return Err(RuntimeError {
                                 err: "Rustblock does not support lookup.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                         None => {
                             return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                     },
                     None => {
                         return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                     _ => {
                         return Err(RuntimeError {
                             err: "Lookup expects string.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                 },
@@ -842,7 +914,8 @@ impl VirtualMachine {
                     None => {
                         return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                     _ => {}
@@ -855,10 +928,15 @@ impl VirtualMachine {
                     None => {
                         return Err(RuntimeError {
                             err: "Call stack underflow.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                 },
+                Opcode::Srcpos(line, col) => {
+                    self.line = *line;
+                    self.col = *col;
+                }
                 Opcode::Swap => match self.stack.pop() {
                     Some(a) => match self.stack.pop() {
                         Some(b) => {
@@ -868,14 +946,16 @@ impl VirtualMachine {
                         None => {
                             return Err(RuntimeError {
                                 err: "Stack underflow.".to_string(),
-                                line: usize::max_value(),
+                                line: self.line,
+                                col: self.col,
                             });
                         }
                     },
                     None => {
                         return Err(RuntimeError {
                             err: "Stack underflow.".to_string(),
-                            line: usize::max_value(),
+                            line: self.line,
+                            col: self.col,
                         });
                     }
                 },
@@ -912,6 +992,8 @@ impl VirtualMachine {
             number: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             string: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             enable_tracing: false,
+            line: usize::max_value(),
+            col: usize::max_value(),
         };
 
         stdlib::setup(&mut vm);
@@ -1412,5 +1494,40 @@ mod tests {
             Number,
             2.0
         );
+
+        let mut vm = vm::VirtualMachine::new();
+        match vm.assemble(
+            "
+            const true
+            dup
+            const 'prototype
+            lookup
+            srcpos 2 3
+            call
+        ",
+        ) {
+            Ok(()) => match vm.run() {
+                Ok(()) => {
+                    assert_eq!(vm.stack.len(), 1);
+                    assert_eq!(vm.ip, 6);
+                    match vm.stack.pop() {
+                        Some(vm::Value::Object(obj)) => {
+                            assert!(Rc::ptr_eq(&obj, &vm.boolean));
+                        }
+                        _ => {
+                            assert!(false);
+                        }
+                    }
+                    assert_eq!(vm.line, 2);
+                    assert_eq!(vm.col, 3);
+                }
+                _ => {
+                    assert!(false);
+                }
+            },
+            _ => {
+                assert!(false);
+            }
+        }
     }
 }

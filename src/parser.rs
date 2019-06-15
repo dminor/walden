@@ -81,6 +81,7 @@ impl fmt::Display for Ast {
 pub struct ParserError {
     pub err: String,
     pub line: usize,
+    pub col: usize,
 }
 
 impl fmt::Display for ParserError {
@@ -100,6 +101,7 @@ macro_rules! expect {
                     return Err(ParserError {
                         err: $err,
                         line: token.line,
+                        col: token.col,
                     });
                 }
             },
@@ -107,6 +109,7 @@ macro_rules! expect {
                 return Err(ParserError {
                     err: "Unexpected end of input.".to_string(),
                     line: usize::max_value(),
+                    col: usize::max_value(),
                 });
             }
         }
@@ -164,6 +167,7 @@ fn statement(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserEr
                             return Err(ParserError {
                                 err: "Unexpected end of input.".to_string(),
                                 line: usize::max_value(),
+                                col: usize::max_value(),
                             });
                         }
                     }
@@ -184,6 +188,7 @@ fn statement(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserEr
             return Err(ParserError {
                 err: "Unexpected end of input.".to_string(),
                 line: usize::max_value(),
+                col: usize::max_value(),
             });
         }
     }
@@ -199,6 +204,7 @@ fn statement(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserEr
             return Err(ParserError {
                 err: "Unexpected end of input.".to_string(),
                 line: usize::max_value(),
+                col: usize::max_value(),
             });
         }
     }
@@ -353,6 +359,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                         let result = Ok(Ast::Value(lexer::LexedToken {
                             token: lexer::Token::Number(-1.0 * n),
                             line: token.line,
+                            col: token.col,
                         }));
                         tokens.pop_front();
                         return result;
@@ -360,11 +367,13 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                     _ => Err(ParserError {
                         err: "Expected value, found '-'.".to_string(),
                         line: token.line,
+                        col: token.col,
                     }),
                 },
                 _ => Err(ParserError {
                     err: "Expected value, found '-'.".to_string(),
                     line: token.line,
+                    col: token.col,
                 }),
             },
             lexer::Token::LeftBracket => {
@@ -388,6 +397,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                                             return Err(ParserError {
                                                 err: "Expected identifier after :".to_string(),
                                                 line: usize::max_value(),
+                                                col: usize::max_value(),
                                             });
                                         }
                                     },
@@ -395,6 +405,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                                         return Err(ParserError {
                                             err: "Unexpected end of input while looking for identifier.".to_string(),
                                             line: usize::max_value(),
+                                            col: usize::max_value(),
                                         });
                                     }
                                 }
@@ -408,6 +419,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                                     return Err(ParserError {
                                         err: "Expected ':' or '|'.".to_string(),
                                         line: usize::max_value(),
+                                        col: usize::max_value(),
                                     });
                                 }
                                 break;
@@ -437,6 +449,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                                             return Err(ParserError {
                                                 err: "Expected identifier.".to_string(),
                                                 line: usize::max_value(),
+                                                col: usize::max_value(),
                                             });
                                         }
                                     },
@@ -445,6 +458,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                                             err: "Unexpected end of input while looking for '|'."
                                                 .to_string(),
                                             line: usize::max_value(),
+                                            col: usize::max_value(),
                                         });
                                     }
                                 }
@@ -456,6 +470,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                         return Err(ParserError {
                             err: "Unexpected end of input".to_string(),
                             line: usize::max_value(),
+                            col: usize::max_value(),
                         });
                     }
                 }
@@ -471,6 +486,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                             return Err(ParserError {
                                 err: "Unexpected end of input while looking for ].".to_string(),
                                 line: usize::max_value(),
+                                col: usize::max_value(),
                             });
                         }
                     }
@@ -500,6 +516,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                 Err(ParserError {
                     err: err,
                     line: token.line,
+                    col: token.col,
                 })
             }
         },
@@ -507,6 +524,7 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
             return Err(ParserError {
                 err: "Unexpected end of input.".to_string(),
                 line: usize::max_value(),
+                col: usize::max_value(),
             });
         }
     }
@@ -537,11 +555,15 @@ mod tests {
     }
 
     macro_rules! parsefails {
-        ($input:expr, $err:tt) => {{
+        ($input:expr, $err:tt, $line:expr, $col:expr) => {{
             match lexer::scan($input) {
                 Ok(mut tokens) => match parser::parse(&mut tokens) {
                     Ok(_) => assert!(false),
-                    Err(e) => assert_eq!(e.err, $err),
+                    Err(e) => {
+                        assert_eq!(e.err, $err);
+                        assert_eq!(e.line, $line);
+                        assert_eq!(e.col, $col);
+                    }
                 },
                 _ => assert!(false),
             }
@@ -622,7 +644,12 @@ mod tests {
             "3 + (4 * 5).",
             "(program (binary + 3:Number (binary * 4:Number 5:Number)))"
         );
-        parsefails!("[1. 2.", "Unexpected end of input while looking for ].");
+        parsefails!(
+            "[1. 2.",
+            "Unexpected end of input while looking for ].",
+            usize::max_value(),
+            usize::max_value()
+        );
         parse!("[].", "(program (block | |))");
         parse!(
             "[1. 2. 3.].",
@@ -641,7 +668,12 @@ mod tests {
             "[:x : y| x + y ].",
             "(program (block :x :y | | (binary + (lookup x:Identifier) (lookup y:Identifier))))"
         );
-        parsefails!("[:x x + 1.].", "Expected ':' or '|'.");
+        parsefails!(
+            "[:x x + 1.].",
+            "Expected ':' or '|'.",
+            usize::max_value(),
+            usize::max_value()
+        );
         parse!(
             "[:x||| x + 1 ].",
             "(program (block :x | | (binary + (lookup x:Identifier) 1:Number)))"

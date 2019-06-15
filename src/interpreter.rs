@@ -6,6 +6,7 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine, instr: &mut Vec<vm::
     match ast {
         parser::Ast::Assignment(id, expr) => match &id.token {
             lexer::Token::Identifier(s) => {
+                instr.push(vm::Opcode::Srcpos(id.line, id.col));
                 generate(expr, vm, instr);
                 instr.push(vm::Opcode::Const(vm::Value::String(
                     vm.string.clone(),
@@ -25,6 +26,7 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine, instr: &mut Vec<vm::
         parser::Ast::Binary(op, lhs, rhs) => {
             generate(lhs, vm, instr);
             generate(rhs, vm, instr);
+            instr.push(vm::Opcode::Srcpos(op.line, op.col));
             match op.token {
                 lexer::Token::Plus => {
                     instr.push(vm::Opcode::Add);
@@ -101,6 +103,7 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine, instr: &mut Vec<vm::
         parser::Ast::Keyword(obj, msg) => {
             let mut message_name = String::new();
             for i in 0..msg.len() {
+                instr.push(vm::Opcode::Srcpos(msg[i].0.line, msg[i].0.col));
                 message_name.push_str(&msg[i].0.token.to_string());
                 message_name.push(':');
                 generate(&msg[msg.len() - i - 1].1, vm, instr);
@@ -115,6 +118,7 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine, instr: &mut Vec<vm::
             instr.push(vm::Opcode::Call);
         }
         parser::Ast::Lookup(id) => {
+            instr.push(vm::Opcode::Srcpos(id.line, id.col));
             instr.push(vm::Opcode::This);
             instr.push(vm::Opcode::Const(vm::Value::String(
                 vm.string.clone(),
@@ -135,6 +139,7 @@ fn generate(ast: &parser::Ast, vm: &mut vm::VirtualMachine, instr: &mut Vec<vm::
         parser::Ast::Unary(obj, msg) => {
             generate(obj, vm, instr);
             instr.push(vm::Opcode::Dup);
+            instr.push(vm::Opcode::Srcpos(msg.line, msg.col));
             instr.push(vm::Opcode::Const(vm::Value::String(
                 vm.string.clone(),
                 msg.token.to_string(),
@@ -191,6 +196,7 @@ pub fn eval(vm: &mut vm::VirtualMachine, ast: &parser::Ast) -> Result<vm::Value,
                 return Err(vm::RuntimeError {
                     err: "Stack underflow.".to_string(),
                     line: usize::max_value(),
+                    col: usize::max_value(),
                 });
             }
         },

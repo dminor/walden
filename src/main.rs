@@ -21,31 +21,38 @@ fn eval(filename: String, s: String, vm: &mut vm::VirtualMachine) {
                 }
                 Err(err) => {
                     let line = min(lines.len(), err.line);
+                    let col = min(lines[line - 1].len(), err.col);
                     let width = line.to_string().len() + 2;
                     println!("{}", err);
                     println!("{s:>width$}|", s = " ", width = width);
                     println!(" {} | {}", line, lines[line - 1]);
-                    println!("{s:>width$}|", s = " ", width = width);
+                    print!("{s:>width$}|", s = " ", width = width);
+                    println!("{s:>width$}^", s = " ", width = col);
                     println!("--> {}:{}", filename, line);
+                    vm.stack.drain(0..);
                 }
             },
             Err(err) => {
                 let line = min(lines.len(), err.line);
+                let col = min(lines[line - 1].len(), err.col);
                 let width = line.to_string().len() + 2;
                 println!("{}", err);
                 println!("{s:>width$}|", s = " ", width = width);
                 println!(" {} | {}", line, lines[line - 1]);
-                println!("{s:>width$}|", s = " ", width = width);
+                print!("{s:>width$}|", s = " ", width = width);
+                println!("{s:>width$}^", s = " ", width = col);
                 println!("--> {}:{}", filename, line);
             }
         },
         Err(err) => {
             let line = min(lines.len(), err.line);
+            let col = min(lines[line - 1].len(), err.col);
             let width = line.to_string().len() + 2;
             println!("{}", err);
             println!("{s:>width$}|", s = " ", width = width);
             println!(" {} | {}", line, lines[line - 1]);
-            println!("{s:>width$}|", s = " ", width = width);
+            print!("{s:>width$}|", s = " ", width = width);
+            println!("{s:>width$}^", s = " ", width = col);
             println!("--> {}:{}", filename, line);
         }
     }

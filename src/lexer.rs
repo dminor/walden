@@ -67,6 +67,7 @@ impl fmt::Display for Token {
 pub struct LexerError {
     pub err: String,
     pub line: usize,
+    pub col: usize,
 }
 
 impl fmt::Display for LexerError {
@@ -80,14 +81,16 @@ impl Error for LexerError {}
 pub struct LexedToken {
     pub token: Token,
     pub line: usize,
+    pub col: usize,
 }
 
 macro_rules! push_token {
-    ($T:expr, $tokens:ident, $line:ident) => {
+    ($T:expr, $tokens:ident, $line:ident, $col:ident) => {
         $tokens.push_back({
             LexedToken {
                 token: $T,
                 line: $line,
+                col: $col,
             }
         });
     };
@@ -95,91 +98,96 @@ macro_rules! push_token {
 
 pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
     let mut line = 1;
+    let mut col = 1;
     let mut tokens = LinkedList::<LexedToken>::new();
     let mut chars = src.chars().peekable();
     loop {
         match chars.next() {
             Some(c) => match c {
                 '|' => {
-                    push_token!(Token::Bar, tokens, line);
+                    push_token!(Token::Bar, tokens, line, col);
                 }
                 ':' => match chars.peek() {
                     Some(c) => {
                         if *c == '=' {
-                            push_token!(Token::ColonEqual, tokens, line);
+                            push_token!(Token::ColonEqual, tokens, line, col);
                             chars.next();
                         } else {
-                            push_token!(Token::Colon, tokens, line);
+                            push_token!(Token::Colon, tokens, line, col);
                         }
                     }
                     None => {
-                        push_token!(Token::Colon, tokens, line);
+                        push_token!(Token::Colon, tokens, line, col);
                     }
                 },
                 '.' => {
-                    push_token!(Token::Dot, tokens, line);
+                    push_token!(Token::Dot, tokens, line, col);
                 }
                 '[' => {
-                    push_token!(Token::LeftBracket, tokens, line);
+                    push_token!(Token::LeftBracket, tokens, line, col);
                 }
                 ']' => {
-                    push_token!(Token::RightBracket, tokens, line);
+                    push_token!(Token::RightBracket, tokens, line, col);
                 }
                 '(' => {
-                    push_token!(Token::LeftParen, tokens, line);
+                    push_token!(Token::LeftParen, tokens, line, col);
                 }
                 ')' => {
-                    push_token!(Token::RightParen, tokens, line);
+                    push_token!(Token::RightParen, tokens, line, col);
                 }
                 '+' => {
-                    push_token!(Token::Plus, tokens, line);
+                    push_token!(Token::Plus, tokens, line, col);
                 }
                 '-' => {
-                    push_token!(Token::Minus, tokens, line);
+                    push_token!(Token::Minus, tokens, line, col);
                 }
                 '*' => {
-                    push_token!(Token::Star, tokens, line);
+                    push_token!(Token::Star, tokens, line, col);
                 }
                 '/' => {
-                    push_token!(Token::Slash, tokens, line);
+                    push_token!(Token::Slash, tokens, line, col);
                 }
                 '>' => match chars.peek() {
                     Some(c) => {
                         if *c == '=' {
-                            push_token!(Token::GreaterEqual, tokens, line);
+                            push_token!(Token::GreaterEqual, tokens, line, col);
                             chars.next();
+                            col += 1;
                         } else {
-                            push_token!(Token::Greater, tokens, line);
+                            push_token!(Token::Greater, tokens, line, col);
                         }
                     }
                     None => {
-                        push_token!(Token::Greater, tokens, line);
+                        push_token!(Token::Greater, tokens, line, col);
                     }
                 },
                 '=' => {
-                    push_token!(Token::Equal, tokens, line);
+                    push_token!(Token::Equal, tokens, line, col);
                 }
                 '<' => match chars.peek() {
                     Some(c) => {
                         if *c == '=' {
-                            push_token!(Token::LessEqual, tokens, line);
+                            push_token!(Token::LessEqual, tokens, line, col);
                             chars.next();
+                            col += 1;
                         } else {
-                            push_token!(Token::Less, tokens, line);
+                            push_token!(Token::Less, tokens, line, col);
                         }
                     }
                     None => {
-                        push_token!(Token::Less, tokens, line);
+                        push_token!(Token::Less, tokens, line, col);
                     }
                 },
                 '~' => match chars.next() {
                     Some(c) => {
                         if c == '=' {
-                            push_token!(Token::NotEqual, tokens, line);
+                            col += 1;
+                            push_token!(Token::NotEqual, tokens, line, col);
                         } else {
                             return Err(LexerError {
                                 err: "Unexpected token while scanning ~=.".to_string(),
                                 line: line,
+                                col: col,
                             });
                         }
                     }
@@ -187,6 +195,7 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                         return Err(LexerError {
                             err: "Unexpected end of input while scanning ~=.".to_string(),
                             line: line,
+                            col: col,
                         });
                     }
                 },
@@ -199,25 +208,32 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                                     push_token!(
                                         Token::String(v.into_iter().collect()),
                                         tokens,
-                                        line
+                                        line,
+                                        col
                                     );
                                     break;
                                 }
                                 '\n' => {
                                     line += 1;
+                                    col = 1;
                                     v.push(c);
                                 }
-                                _ => v.push(c),
+                                _ => {
+                                    v.push(c);
+                                    col += 1;
+                                }
                             },
                             None => {
                                 return Err(LexerError {
                                     err: "Unexpected end of input while scanning string."
                                         .to_string(),
                                     line: line,
+                                    col: col,
                                 });
                             }
                         }
                     }
+                    col += 1;
                 }
                 '"' => loop {
                     match chars.next() {
@@ -227,6 +243,7 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                             }
                             '\n' => {
                                 line += 1;
+                                col = 0; //incremented below
                             }
                             _ => {}
                         },
@@ -234,12 +251,15 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                             return Err(LexerError {
                                 err: "Unexpected end of input while scanning comment.".to_string(),
                                 line: line,
+                                col: col,
                             });
                         }
                     }
+                    col += 1;
                 },
                 '\n' => {
                     line += 1;
+                    col = 1;
                     continue;
                 }
                 ' ' => {}
@@ -260,9 +280,11 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                                 if c.is_alphanumeric() {
                                     v.push(*c);
                                     chars.next();
+                                    col += 1;
                                 } else if !found_dot && *c == '.' {
                                     found_dot = true;
                                     chars.next();
+                                    col += 1;
                                     match chars.peek() {
                                         Some(c) => {
                                             if c.is_numeric() {
@@ -290,21 +312,26 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                     let s: String = v.into_iter().collect();
                     match &s[..] {
                         "true" => {
-                            push_token!(Token::True, tokens, line);
+                            push_token!(Token::True, tokens, line, col);
                         }
                         "false" => {
-                            push_token!(Token::False, tokens, line);
+                            push_token!(Token::False, tokens, line, col);
                         }
                         "nil" => {
-                            push_token!(Token::Nil, tokens, line);
+                            push_token!(Token::Nil, tokens, line, col);
                         }
                         _ => match s.parse::<f64>() {
                             Ok(n) => {
-                                push_token!(Token::Number(n), tokens, line);
+                                push_token!(Token::Number(n), tokens, line, col);
                             }
                             _ => {
                                 if valid_identifier {
-                                    push_token!(Token::Identifier(s.to_string()), tokens, line);
+                                    push_token!(
+                                        Token::Identifier(s.to_string()),
+                                        tokens,
+                                        line,
+                                        col
+                                    );
                                 } else {
                                     let mut err = "Invalid identifier: ".to_string();
                                     err.push_str(&s);
@@ -312,13 +339,14 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                                     return Err(LexerError {
                                         err: err,
                                         line: line,
+                                        col: col,
                                     });
                                 }
                             }
                         },
                     }
                     if push_dot {
-                        push_token!(Token::Dot, tokens, line);
+                        push_token!(Token::Dot, tokens, line, col);
                     }
                 }
             },
@@ -326,6 +354,7 @@ pub fn scan(src: &str) -> Result<LinkedList<LexedToken>, LexerError> {
                 break;
             }
         }
+        col += 1;
     }
 
     Ok(tokens)
@@ -355,12 +384,13 @@ mod tests {
     }
 
     macro_rules! scanfails {
-        ($input:expr, $err:tt, $line:expr) => {{
+        ($input:expr, $err:tt, $line:expr, $col:expr) => {{
             match lexer::scan($input) {
                 Ok(_) => assert!(false),
                 Err(e) => {
                     assert_eq!(e.err, $err);
                     assert_eq!(e.line, $line);
+                    assert_eq!(e.col, $col);
                 }
             }
         }};
@@ -436,9 +466,9 @@ mod tests {
             lexer::Token::True
         );
 
-        scanfails!("2 ~$", "Unexpected token while scanning ~=.", 1);
+        scanfails!("2 ~$", "Unexpected token while scanning ~=.", 1, 3);
 
-        scanfails!("2 ~", "Unexpected end of input while scanning ~=.", 1);
+        scanfails!("2 ~", "Unexpected end of input while scanning ~=.", 1, 3);
 
         scan!("<", lexer::Token::Less);
         scan!(">", lexer::Token::Greater);
@@ -446,11 +476,11 @@ mod tests {
 
         scan!("Valid", lexer::Token::Identifier("Valid".to_string()));
         scan!("@Valid", lexer::Token::Identifier("@Valid".to_string()));
-        scanfails!("2Valid", "Invalid identifier: 2Valid.", 1);
+        scanfails!("2Valid", "Invalid identifier: 2Valid.", 1, 6);
 
-        scanfails!("In_valid", "Invalid identifier: _valid.", 1);
+        scanfails!("In_valid", "Invalid identifier: _valid.", 1, 8);
 
-        scanfails!("$valid", "Invalid identifier: $valid.", 1);
+        scanfails!("$valid", "Invalid identifier: $valid.", 1, 6);
 
         scan!(
             "'hello world'",
@@ -465,13 +495,15 @@ mod tests {
         scanfails!(
             "'hello world",
             "Unexpected end of input while scanning string.",
-            1
+            1,
+            12
         );
 
         scanfails!(
             "\"This is a comment that\nnever ends",
             "Unexpected end of input while scanning comment.",
-            2
+            2,
+            11
         );
     }
 }
