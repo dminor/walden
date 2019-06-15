@@ -406,5 +406,42 @@ mod tests {
             Number,
             4.0
         );
+
+        eval!(
+            "x := 1.
+             [x := 2] value.
+             x.",
+            Number,
+            2.0
+        );
+
+        eval!(
+            "x := 1.
+             [x := 2] value.
+             [x] value.",
+            Number,
+            2.0
+        );
+
+        eval!(
+            "[x := 1] value.
+             x := 2.
+             [x] value.",
+            Number,
+            2.0
+        );
+
+        eval!(
+            "o := Object clone.
+             o override: 'test' with: [|
+                 | x |
+                 x := 1.
+                 true ifTrue: [x := 2] ifFalse: [x := 3].
+                 x.
+             ].
+             o test.",
+            Number,
+            2.0
+        );
     }
 }

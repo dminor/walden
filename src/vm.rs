@@ -97,16 +97,15 @@ impl Object {
             return;
         }
 
-        if let Some(mut ancestor) = self.prototype.clone() {
+        if let Some(mut borrowed) = Some(self.prototype.clone()) {
             loop {
-                let borrowed = ancestor.borrow().prototype.clone();
                 match borrowed {
                     Some(proto) => {
                         if proto.borrow().members.contains_key(&member) {
                             proto.borrow_mut().members.insert(member, value.clone());
                             return;
                         }
-                        ancestor = proto.clone();
+                        borrowed = proto.borrow().prototype.clone();
                     }
                     None => {
                         break;
