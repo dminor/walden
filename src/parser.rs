@@ -438,7 +438,6 @@ fn value(tokens: &mut LinkedList<lexer::LexedToken>) -> Result<Ast, ParserError>
                                 match tokens.pop_front() {
                                     Some(token) => match &token.token {
                                         lexer::Token::Identifier(_) => {
-                                            println!("found local: {}", token.token);
                                             locals.push(token);
                                             continue;
                                         }
