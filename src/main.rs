@@ -30,6 +30,7 @@ fn eval(filename: String, s: String, vm: &mut vm::VirtualMachine) {
                     println!("{s:>width$}^", s = " ", width = col);
                     println!("--> {}:{}", filename, line);
                     vm.stack.drain(0..);
+                    vm.callstack.drain(0..);
                 }
             },
             Err(err) => {
