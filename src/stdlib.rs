@@ -276,6 +276,24 @@ fn block_value(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
         Some(value) => match value {
             vm::Value::Block(proto, params, locals, ip) => {
+                let proto = Rc::new(RefCell::new(vm::Object::new_with_prototype(proto.clone())));
+
+                for param in params.iter() {
+                    match vm.stack.pop() {
+                        Some(value) => {
+                            proto.borrow_mut().members.insert(param.to_string(), value);
+                        }
+                        None => {
+                            return err!(vm, "Stack underflow");
+                        }
+                    }
+                }
+                for local in locals.iter() {
+                    proto
+                        .borrow_mut()
+                        .members
+                        .insert(local.to_string(), vm::Value::Nil(vm.object.clone()));
+                }
                 vm.callstack.push((
                     vm::Value::Block(proto.clone(), params.to_vec(), locals.to_vec(), ip),
                     vm.stack.len(),
@@ -380,6 +398,8 @@ pub fn setup(vm: &mut vm::VirtualMachine) {
     setobject!(vm.object, "set:to:", object_set_to);
     setobject!(vm.block, "disassemble", block_disassemble);
     setobject!(vm.block, "value", block_value);
+    setobject!(vm.block, "value:", block_value);
+    setobject!(vm.block, "value:value:", block_value);
     setobject!(vm.block, "whileTrue:", block_whiletrue);
     setobject!(vm.boolean, "and:", boolean_and);
     setobject!(vm.boolean, "ifFalse:", boolean_iffalse);
