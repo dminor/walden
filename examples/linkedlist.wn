@@ -1,0 +1,136 @@
+List := Object clone.
+List override: 'data' with: nil.
+List override: 'next' with: nil.
+List override: 'getData' with: [@data].
+List override: 'getNext' with: [@next].
+
+List override: 'forEach:' with: [:block|
+    | current |
+
+    current := self.
+    [(current getNext) ~= nil] whileTrue: [
+        block value: current getData.
+        current := current getNext.
+    ].
+].
+
+List override: 'map:' with: [:block|
+    | current new |
+    new := List clone.
+    new override: 'data' with: nil.
+    new override: 'next' with: nil.
+
+    current := self.
+    [(current getNext) ~= nil] whileTrue: [
+        new pushBack: 2 * current getData.        
+        current := current getNext.
+    ].
+
+    new.
+].
+
+List override: 'popBack' with: [|
+    | current last value |
+    (@next = nil)
+        ifTrue: [
+            value := @data.
+            @data := nil.
+        ]
+        ifFalse: [
+            current := self.
+            [(current getNext) ~= nil] whileTrue: [
+                last := current.
+                current := current getNext.
+            ].
+            value := last getData.
+            last override: 'next' with: nil.
+        ].
+    value.
+].
+
+List override: 'popFront' with: [|
+    | value |
+    (@next = nil)
+        ifTrue: [
+            value := @data.
+            @data := nil.
+        ]
+        ifFalse: [
+            value := @data.
+            @data := @next getData.
+            @next := @next getNext.
+        ].
+    value.
+].
+
+List override: 'pushBack:' with: [:value |
+    | current |
+    (@next = nil)
+        ifTrue: [
+            @next := List clone.
+            @next override: 'data' with: nil.
+            @next override: 'next' with: nil.
+            @data := value.
+        ]
+        ifFalse: [
+            current := self.
+            [(current getNext) ~= nil] whileTrue: [
+                current := current getNext.
+            ].
+            current pushBack: value.
+        ].
+    self.
+].
+
+List override: 'pushFront:' with: [:value |
+    | current |
+    (@next = nil)
+        ifTrue: [
+            @next := List clone.
+            @next override: 'data' with: nil.
+            @next override: 'next' with: nil.
+            @data := value.
+        ]
+        ifFalse: [
+            node := List clone.
+            node override: 'data' with: @data.
+            node override: 'next' with: @next.
+            @data := value.
+            @next := node.
+        ].
+    self.
+].
+
+list := List clone.
+list pushBack: 1.
+list pushBack: 2.
+list pushBack: 3.
+list pushFront: 4.
+Transcript show: 'List'.
+list forEach: [:value|
+    Transcript show: value.
+].
+
+Transcript show: 'List 2'.
+list2 := List clone.
+list2 override: 'data' with: nil.
+list2 override: 'next' with: nil.
+list2 pushBack: 5.
+list2 pushBack: 6.
+list2 forEach: [:value|
+    Transcript show: value.
+].
+Transcript show: 'List'.
+list forEach: [:value|
+    Transcript show: value.
+].
+doubled := list map: [:value|
+    value * 2.
+].
+Transcript show: 'Doubled'.
+doubled forEach: [:value|
+    Transcript show: value.
+].
+Transcript show: 'Pop front and back'.
+Transcript show: list popFront.
+Transcript show: list popBack.

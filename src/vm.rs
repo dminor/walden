@@ -193,7 +193,7 @@ impl fmt::Display for Opcode {
 
 #[derive(Default)]
 pub struct VirtualMachine {
-    pub callstack: Vec<(Value, usize, usize)>,
+    pub callstack: Vec<(Value, usize, usize, bool)>,
     pub instructions: Vec<Opcode>,
     pub ip: usize,
     pub stack: Vec<Value>,
@@ -209,8 +209,6 @@ pub struct VirtualMachine {
 
     pub line: usize,
     pub col: usize,
-
-    pub halt_on_ret: bool,
 }
 
 macro_rules! apply_op {
@@ -528,7 +526,7 @@ impl VirtualMachine {
                 Opcode::Add => apply_op!(self, Number, Number, self.number.clone(), +, Add),
                 Opcode::Const(obj) => match obj {
                     Value::Block(proto, params, locals, ip) => match self.callstack.last() {
-                        Some((Value::Block(proto, _, _, _), _, _)) => {
+                        Some((Value::Block(proto, _, _, _), _, _, _)) => {
                             self.stack.push(Value::Block(
                                 Rc::new(RefCell::new(Object::new_with_prototype(proto.clone()))),
                                 params.to_vec(),
@@ -804,6 +802,7 @@ impl VirtualMachine {
                             Value::Block(proto.clone(), params.to_vec(), locals.to_vec(), ip),
                             self.stack.len(),
                             self.ip + 1,
+                            false,
                         ));
                         self.ip = ip;
                         continue;
@@ -922,9 +921,9 @@ impl VirtualMachine {
                     _ => {}
                 },
                 Opcode::Ret => match self.callstack.pop() {
-                    Some((_, _, ip)) => {
+                    Some((_, _, ip, brk)) => {
                         self.ip = ip;
-                        if self.halt_on_ret {
+                        if brk {
                             break;
                         }
                         continue; // skip incrementing ip
@@ -964,7 +963,7 @@ impl VirtualMachine {
                     }
                 },
                 Opcode::This => match self.callstack.last() {
-                    Some((obj, _, _)) => {
+                    Some((obj, _, _, _)) => {
                         self.stack.push(obj.clone());
                     }
                     None => {
@@ -998,7 +997,6 @@ impl VirtualMachine {
             enable_tracing: false,
             line: usize::max_value(),
             col: usize::max_value(),
-            halt_on_ret: false,
         };
 
         stdlib::setup(&mut vm);
