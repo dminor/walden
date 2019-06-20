@@ -46,7 +46,7 @@ impl Object {
                 Value::Nil(proto) => Some(Value::Nil(proto.clone())),
                 Value::Number(proto, n) => Some(Value::Number(proto.clone(), *n)),
                 Value::Object(obj) => Some(Value::Object(obj.clone())),
-                Value::RustBlock(name, f) => Some(Value::RustBlock(name.to_string(), *f)),
+                Value::RustBlock(proto, name, f) => Some(Value::RustBlock(proto.clone(), name.to_string(), *f)),
                 Value::String(proto, s) => Some(Value::String(proto.clone(), s.to_string())),
             },
             None => match &self.prototype {
@@ -125,7 +125,7 @@ pub enum Value {
     Nil(Rc<RefCell<Object>>),
     Number(Rc<RefCell<Object>>, f64),
     Object(Rc<RefCell<Object>>),
-    RustBlock(String, fn(&mut VirtualMachine) -> Result<(), RuntimeError>),
+    RustBlock(Rc<RefCell<Object>>, String, fn(&mut VirtualMachine) -> Result<(), RuntimeError>),
     String(Rc<RefCell<Object>>, String),
 }
 
@@ -137,7 +137,7 @@ impl fmt::Display for Value {
             Value::Nil(_) => write!(f, "nil"),
             Value::Number(_, n) => write!(f, "{}", n),
             Value::Object(obj) => write!(f, "(object {:p})", *obj),
-            Value::RustBlock(name, _) => write!(f, "(lambda {})", name),
+            Value::RustBlock(_, name, _) => write!(f, "(lambda {})", name),
             Value::String(_, s) => write!(f, "'{}'", s),
         }
     }
@@ -555,7 +555,7 @@ impl VirtualMachine {
                     Value::Object(_) => {
                         unreachable!();
                     }
-                    Value::RustBlock(_, _) => {
+                    Value::RustBlock(_, _, _) => {
                         unreachable!();
                     }
                     Value::String(proto, s) => {
@@ -625,8 +625,8 @@ impl VirtualMachine {
                         _ => unreachable!(),
                     },
 
-                    Some(Value::RustBlock(_, _)) => match self.stack.pop() {
-                        Some(Value::RustBlock(_, _)) => match self.stack.pop() {
+                    Some(Value::RustBlock(_, _, _)) => match self.stack.pop() {
+                        Some(Value::RustBlock(_, _, _)) => match self.stack.pop() {
                             None => {
                                 return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
@@ -715,8 +715,8 @@ impl VirtualMachine {
                             self.stack.push(Value::Boolean(self.boolean.clone(), true));
                         }
                     },
-                    Some(Value::RustBlock(_, _)) => match self.stack.pop() {
-                        Some(Value::RustBlock(_, _)) => match self.stack.pop() {
+                    Some(Value::RustBlock(_, _, _)) => match self.stack.pop() {
+                        Some(Value::RustBlock(_, _, _)) => match self.stack.pop() {
                             None => {
                                 return Err(RuntimeError {
                                     err: "Stack underflow.".to_string(),
@@ -761,13 +761,13 @@ impl VirtualMachine {
                                 | Value::Nil(this)
                                 | Value::Number(this, _)
                                 | Value::Object(this)
+                                | Value::RustBlock(this, _, _)
                                 | Value::String(this, _) => {
                                     proto
                                         .borrow_mut()
                                         .members
                                         .insert("self".to_string(), Value::Object(this.clone()));
                                 }
-                                Value::RustBlock(_, _) => unreachable!(),
                             },
                             None => {
                                 proto
@@ -807,7 +807,7 @@ impl VirtualMachine {
                         self.ip = ip;
                         continue;
                     }
-                    Some(Value::RustBlock(_, lambda)) => {
+                    Some(Value::RustBlock(_, _, lambda)) => {
                         let ip = self.ip;
                         match lambda(self) {
                             Ok(()) => {
@@ -856,6 +856,7 @@ impl VirtualMachine {
                         | Some(Value::Boolean(proto, _))
                         | Some(Value::Nil(proto))
                         | Some(Value::Number(proto, _))
+                        | Some(Value::RustBlock(proto, _, _))
                         | Some(Value::String(proto, _)) => {
                             let result;
                             match proto.borrow().lookup(s) {
@@ -879,13 +880,6 @@ impl VirtualMachine {
                                 }
                             }
                             self.stack.push(result);
-                        }
-                        Some(Value::RustBlock(_, _)) => {
-                            return Err(RuntimeError {
-                                err: "Rustblock does not support lookup.".to_string(),
-                                line: self.line,
-                                col: self.col,
-                            });
                         }
                         None => {
                             return Err(RuntimeError {

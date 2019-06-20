@@ -458,5 +458,11 @@ mod tests {
 
         eval!("[:x|x + 1] value: 1.", Number, 2.0);
         eval!("[:x :y|x + y] value: 1 value: 2.", Number, 3.0);
+        eval!(
+            "value prototype set: 'greeting' to: ['hi'].
+             value greeting.",
+            String,
+            "hi"
+        );
     }
 }

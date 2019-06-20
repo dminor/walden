@@ -327,6 +327,7 @@ fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError>
             | vm::Value::Boolean(proto, _)
             | vm::Value::Nil(proto)
             | vm::Value::Number(proto, _)
+            | vm::Value::RustBlock(proto, _, _)
             | vm::Value::String(proto, _) => {
                 vm.stack.push(vm::Value::Object(proto.clone()));
                 Ok(())
@@ -340,7 +341,6 @@ fn object_prototype(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError>
                 vm.stack.push(result);
                 Ok(())
             }
-            vm::Value::RustBlock(_, _) => unreachable!(),
         },
         None => err!(vm, "Stack underflow."),
     }
@@ -394,10 +394,10 @@ fn transcript_show(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> 
 }
 
 macro_rules! setobject {
-    ($target:expr, $name:expr, $fn:ident) => {{
+    ($vm:ident, $target:expr, $name:expr, $fn:ident) => {{
         $target.borrow_mut().members.insert(
             $name.to_string(),
-            vm::Value::RustBlock($name.to_string(), $fn),
+            vm::Value::RustBlock($vm.block.clone(), $name.to_string(), $fn),
         );
     }};
     ($target:expr, $name:expr, $obj:expr) => {{
@@ -406,28 +406,28 @@ macro_rules! setobject {
 }
 
 pub fn setup(vm: &mut vm::VirtualMachine) {
-    setobject!(vm.object, "clone", object_clone);
-    setobject!(vm.object, "override:with:", object_override_with);
-    setobject!(vm.object, "prototype", object_prototype);
-    setobject!(vm.object, "set:to:", object_set_to);
-    setobject!(vm.block, "disassemble", block_disassemble);
-    setobject!(vm.block, "value", block_value);
-    setobject!(vm.block, "value:", block_value);
-    setobject!(vm.block, "value:value:", block_value);
-    setobject!(vm.block, "whileTrue:", block_whiletrue);
-    setobject!(vm.boolean, "and:", boolean_and);
-    setobject!(vm.boolean, "ifFalse:", boolean_iffalse);
-    setobject!(vm.boolean, "ifTrue:ifFalse:", boolean_iftrue_iffalse);
-    setobject!(vm.boolean, "ifTrue:", boolean_iftrue);
-    setobject!(vm.boolean, "not", boolean_not);
-    setobject!(vm.boolean, "or:", boolean_or);
+    setobject!(vm, vm.object, "clone", object_clone);
+    setobject!(vm, vm.object, "override:with:", object_override_with);
+    setobject!(vm, vm.object, "prototype", object_prototype);
+    setobject!(vm, vm.object, "set:to:", object_set_to);
+    setobject!(vm, vm.block, "disassemble", block_disassemble);
+    setobject!(vm, vm.block, "value", block_value);
+    setobject!(vm, vm.block, "value:", block_value);
+    setobject!(vm, vm.block, "value:value:", block_value);
+    setobject!(vm, vm.block, "whileTrue:", block_whiletrue);
+    setobject!(vm, vm.boolean, "and:", boolean_and);
+    setobject!(vm, vm.boolean, "ifFalse:", boolean_iffalse);
+    setobject!(vm, vm.boolean, "ifTrue:ifFalse:", boolean_iftrue_iffalse);
+    setobject!(vm, vm.boolean, "ifTrue:", boolean_iftrue);
+    setobject!(vm, vm.boolean, "not", boolean_not);
+    setobject!(vm, vm.boolean, "or:", boolean_or);
 
     setobject!(vm.block, "Object", vm::Value::Object(vm.object.clone()));
 
     let transcript = Rc::new(RefCell::new(vm::Object::new_with_prototype(
         vm.object.clone(),
     )));
-    setobject!(transcript, "show:", transcript_show);
+    setobject!(vm, transcript, "show:", transcript_show);
 
     setobject!(
         vm.block,
