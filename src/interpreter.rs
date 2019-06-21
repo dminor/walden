@@ -464,5 +464,15 @@ mod tests {
             String,
             "hi"
         );
+        eval!(
+            "'a string with some words' startsWith: 'a string'.",
+            Boolean,
+            true
+        );
+        eval!(
+            "('a string with some words' split: ' ') next.",
+            String,
+            "a".to_string()
+        );
     }
 }

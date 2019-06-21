@@ -46,7 +46,9 @@ impl Object {
                 Value::Nil(proto) => Some(Value::Nil(proto.clone())),
                 Value::Number(proto, n) => Some(Value::Number(proto.clone(), *n)),
                 Value::Object(obj) => Some(Value::Object(obj.clone())),
-                Value::RustBlock(proto, name, f) => Some(Value::RustBlock(proto.clone(), name.to_string(), *f)),
+                Value::RustBlock(proto, name, f) => {
+                    Some(Value::RustBlock(proto.clone(), name.to_string(), *f))
+                }
                 Value::String(proto, s) => Some(Value::String(proto.clone(), s.to_string())),
             },
             None => match &self.prototype {
@@ -125,7 +127,11 @@ pub enum Value {
     Nil(Rc<RefCell<Object>>),
     Number(Rc<RefCell<Object>>, f64),
     Object(Rc<RefCell<Object>>),
-    RustBlock(Rc<RefCell<Object>>, String, fn(&mut VirtualMachine) -> Result<(), RuntimeError>),
+    RustBlock(
+        Rc<RefCell<Object>>,
+        String,
+        fn(&mut VirtualMachine) -> Result<(), RuntimeError>,
+    ),
     String(Rc<RefCell<Object>>, String),
 }
 
@@ -202,6 +208,7 @@ pub struct VirtualMachine {
     pub object: Rc<RefCell<Object>>,
     pub block: Rc<RefCell<Object>>,
     pub boolean: Rc<RefCell<Object>>,
+    pub iterator: Rc<RefCell<Object>>,
     pub number: Rc<RefCell<Object>>,
     pub string: Rc<RefCell<Object>>,
 
@@ -986,6 +993,7 @@ impl VirtualMachine {
             object: object.clone(),
             block: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             boolean: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
+            iterator: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             number: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             string: Rc::new(RefCell::new(Object::new_with_prototype(object.clone()))),
             enable_tracing: false,

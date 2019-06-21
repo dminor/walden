@@ -288,6 +288,47 @@ fn boolean_or(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     }
 }
 
+fn iterator_next(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
+    match vm.stack.pop() {
+        Some(vm::Value::Object(obj)) => {
+            let mut obj = obj.borrow_mut();
+            match obj.members.get(&"n".to_string()) {
+                Some(v) => match v {
+                    vm::Value::Number(_, n) => match obj.members.get(&"len".to_string()) {
+                        Some(v) => match v {
+                            vm::Value::Number(_, len) => {
+                                if n < len {
+                                    match obj.members.get(&n.to_string()) {
+                                        Some(v) => {
+                                            vm.stack.push(v.clone());
+                                            let n = *n + 1.0;
+                                            obj.override_with(
+                                                "n".to_string(),
+                                                vm::Value::Number(vm.number.clone(), n),
+                                            );
+                                            Ok(())
+                                        }
+                                        _ => err!(vm, "iterator: invalid index."),
+                                    }
+                                } else {
+                                    vm.stack.push(vm::Value::Nil(vm.object.clone()));
+                                    Ok(())
+                                }
+                            }
+                            _ => err!(vm, "iterator: invalid length."),
+                        },
+                        None => err!(vm, "Stack underflow."),
+                    },
+                    _ => err!(vm, "iterator: invalid index."),
+                },
+                None => err!(vm, "Stack underflow."),
+            }
+        }
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
+    }
+}
+
 fn object_clone(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     match vm.stack.pop() {
         Some(vm::Value::Object(obj)) => {
@@ -381,6 +422,50 @@ fn object_set_to(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     }
 }
 
+fn string_split(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
+    match vm.stack.pop() {
+        Some(vm::Value::String(_, string)) => match vm.stack.pop() {
+            Some(vm::Value::String(_, split)) => {
+                let mut o = vm::Object::new_with_prototype(vm.iterator.clone());
+                let mut len = 0.0;
+                for s in string.split(&split) {
+                    o.override_with(
+                        len.to_string(),
+                        vm::Value::String(vm.string.clone(), s.to_string()),
+                    );
+                    len += 1.0;
+                }
+                o.override_with("n".to_string(), vm::Value::Number(vm.number.clone(), 0.0));
+                o.override_with("len".to_string(), vm::Value::Number(vm.number.clone(), len));
+                vm.stack.push(vm::Value::Object(Rc::new(RefCell::new(o))));
+                Ok(())
+            }
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "startsWith: expects string."),
+        },
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
+    }
+}
+
+fn string_startswith(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
+    match vm.stack.pop() {
+        Some(vm::Value::String(_, string)) => match vm.stack.pop() {
+            Some(vm::Value::String(_, start)) => {
+                vm.stack.push(vm::Value::Boolean(
+                    vm.boolean.clone(),
+                    string.starts_with(&start),
+                ));
+                Ok(())
+            }
+            None => err!(vm, "Stack underflow."),
+            _ => err!(vm, "startsWith: expects string."),
+        },
+        None => err!(vm, "Stack underflow."),
+        _ => err!(vm, "Message not understood."),
+    }
+}
+
 fn transcript_show(vm: &mut vm::VirtualMachine) -> Result<(), vm::RuntimeError> {
     vm.stack.pop();
     match vm.stack.pop() {
@@ -406,10 +491,6 @@ macro_rules! setobject {
 }
 
 pub fn setup(vm: &mut vm::VirtualMachine) {
-    setobject!(vm, vm.object, "clone", object_clone);
-    setobject!(vm, vm.object, "override:with:", object_override_with);
-    setobject!(vm, vm.object, "prototype", object_prototype);
-    setobject!(vm, vm.object, "set:to:", object_set_to);
     setobject!(vm, vm.block, "disassemble", block_disassemble);
     setobject!(vm, vm.block, "value", block_value);
     setobject!(vm, vm.block, "value:", block_value);
@@ -421,6 +502,13 @@ pub fn setup(vm: &mut vm::VirtualMachine) {
     setobject!(vm, vm.boolean, "ifTrue:", boolean_iftrue);
     setobject!(vm, vm.boolean, "not", boolean_not);
     setobject!(vm, vm.boolean, "or:", boolean_or);
+    setobject!(vm, vm.iterator, "next", iterator_next);
+    setobject!(vm, vm.object, "clone", object_clone);
+    setobject!(vm, vm.object, "override:with:", object_override_with);
+    setobject!(vm, vm.object, "prototype", object_prototype);
+    setobject!(vm, vm.object, "set:to:", object_set_to);
+    setobject!(vm, vm.string, "split:", string_split);
+    setobject!(vm, vm.string, "startsWith:", string_startswith);
 
     setobject!(vm.block, "Object", vm::Value::Object(vm.object.clone()));
 
