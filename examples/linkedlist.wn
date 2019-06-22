@@ -22,7 +22,7 @@ List override: 'map:' with: [:block|
 
     current := self.
     [(current getNext) ~= nil] whileTrue: [
-        new pushBack: 2 * current getData.        
+        new pushBack: 2 * current getData.
         current := current getNext.
     ].
 
