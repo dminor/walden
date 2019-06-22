@@ -11,9 +11,9 @@ mod vm;
 
 use std::io::{self, BufRead, Write};
 
-fn eval(filename: String, s: String, vm: &mut vm::VirtualMachine) {
-    let lines: Vec<&str> = s.split('\n').collect();
-    match lexer::scan(&s) {
+fn eval(filename: &str, src: &str, vm: &mut vm::VirtualMachine) {
+    let lines: Vec<&str> = src.split('\n').collect();
+    match lexer::scan(src) {
         Ok(mut tokens) => match parser::parse(&mut tokens) {
             Ok(ast) => match interpreter::eval(vm, &ast) {
                 Ok(v) => {
@@ -66,11 +66,11 @@ fn main() -> io::Result<()> {
         if args[i] == "--enable-tracing" {
             vm.enable_tracing = true;
         } else {
-            let filename = args[i].to_string();
-            let mut file = File::open(&filename)?;
+            let filename = &args[i];
+            let mut file = File::open(filename)?;
             let mut program = String::new();
             file.read_to_string(&mut program)?;
-            eval(filename, program, &mut vm);
+            eval(&filename, &program, &mut vm);
             return Ok(());
         }
     }
@@ -83,8 +83,8 @@ fn main() -> io::Result<()> {
 
     for line in stdin.lock().lines() {
         match line {
-            Ok(s) => {
-                eval("<stdin>".to_string(), s, &mut vm);
+            Ok(src) => {
+                eval("<stdin>", &src, &mut vm);
             }
             _ => break,
         }
