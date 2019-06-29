@@ -3,7 +3,7 @@ Walden
 
 Walden is a little language in the Smalltalk and Self family. Its syntax is
 close to Smalltalk, but like Self, it uses objects as prototypes rather than
-classes. Like my first language [Scoundrel](https://github.io/dminor/scoundrel)
+classes. Like my first language [Scoundrel](https://github.com/dminor/scoundrel)
 my primary goal was to learn more about interpreters and to improve my Rust.
 Scoundrel is purely functional, so I wanted Walden to be imperative and
 object-oriented. Since scoundrel is interpreted by walking the abstract
@@ -182,7 +182,6 @@ parts next.
 "Returns 'world'"
 parts next.
 "Returns nil"
-
 ```
 
 The Virtual Machine
